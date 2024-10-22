@@ -1,9 +1,8 @@
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Subset
 from pathlib import Path
+import torch
 
-# カスタム Subset クラス（オプション）
-class SubsetWithAttributes(Subset):
+class SubsetWithAttributes(torch.utils.data.Subset):
     def __getattr__(self, attr):
         return getattr(self.dataset, attr)
 
@@ -11,11 +10,12 @@ def save_filenames(dataset, indices, filepath):
     """
     指定されたインデックスに基づいてデータセット内のファイル名をテキストファイルに保存
     Args:
-        dataset (Dataset): CocoSegmentationDatasetオブジェクト
+        dataset (Dataset): SegmentationDatasetオブジェクト
         indices (list): 保存するデータのインデックス
         filepath (Path): 保存先のファイルパス
     """
-    filenames = [dataset.coco.imgs[dataset.ids[i]]['file_name'] for i in indices]
+    # ファイル名を取得（annotation_filesから）
+    filenames = [dataset.annotation_files[i].name for i in indices]
     with open(filepath, 'w') as f:
         for filename in filenames:
             f.write(f"{filename}\n")
@@ -24,7 +24,7 @@ def split_dataset(dataset, train_val_ratio=0.1, test_size=10, random_seed=42, ou
     """
     データセットを訓練、検証、テスト用に分割し、各データセットに含まれるファイル名をテキストファイルで保存する関数
     Args:
-        dataset (Dataset): CocoSegmentationDatasetオブジェクト
+        dataset (Dataset): SegmentationDatasetオブジェクト
         train_val_ratio (float 0.~1.): 訓練から省く検証データの割合（テストデータを除いた部分からの割合）
         test_size (int): テストデータの枚数
         random_seed (int): ランダムシード

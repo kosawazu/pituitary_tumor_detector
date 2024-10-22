@@ -35,12 +35,12 @@ logger = logging.getLogger(__name__)
 
 def main(args):
     data_dir = args.data_dir
-    mask_path = args.mask_path
+    mask_dir = args.mask_dir
     model_name = args.model_name
-    save_dir = args.save_dir / Path("gear", "training_results", model_name)
+    save_dir = args.save_dir / Path("nagoya", "training_results", model_name)
     epochs = args.epochs
     class_num = args.class_num
-    train_image_dir = data_dir / Path("gear")
+    train_image_dir = data_dir / Path("img")
     model_save_dir = save_dir / Path( "model")
     graph_save_dir = save_dir / Path("graph")
     others_save_dir = save_dir / Path("others")
@@ -55,7 +55,15 @@ def main(args):
     device, model = setup_device(model)
 
     # データセットとデータローダの作成
-    dataset = SegmentationDataset(mask_path, train_image_dir, transform)
+    dataset = SegmentationDataset(mask_dir, train_image_dir, transform)
+    print(f"Total samples in dataset: {len(dataset)}")
+
+    # サンプルを取得して確認
+    sample_idx = 0  # 確認したいインデックス
+    image, mask, filename = dataset[sample_idx]  # 0番目のサンプルを取得
+
+    if image is None or mask is None:
+        print(f"Sample {sample_idx} has no valid data.")
     train_dataset, valid_dataset, test_dataset = split_dataset(dataset, output_dir=others_save_dir / "split_dataset")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=0)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
@@ -63,31 +71,42 @@ def main(args):
 
     # マスクのラベルが指定したクラス数に収まっているか確認する例
     # マスクのラベルが指定したクラス数に収まっているか確認する例
-    mask = train_dataset[0][1]  # 0番目のサンプルのマスクを取得
-    mask = map_mask_to_three_classes(mask)  # クラスのマッピングを実行
+    mask = train_dataset[10][0]  # 0番目のサンプルのマスクを取得
+    # mask = map_mask_to_four_classes(mask)  # クラスのマッピングを実行
     logger.info(f'Categories after mapping: {mask.unique()}')  # マスク内のユニークなクラスラベルを確認
 
 
-    # 実行時のモデルアーキテクチャとデータの可視化
-    save_model_architecture(model, others_save_dir)
-    visualize_random_sample_from_dataset(train_dataset, others_save_dir)
+    # # 実行時のモデルアーキテクチャとデータの可視化
+    # save_model_architecture(model, others_save_dir)
+    # visualize_random_sample_from_dataset(train_dataset, others_save_dir)
 
-    # 損失関数とオプティマイザ
-    criterion = nn.CrossEntropyLoss()  # セマンティックセグメンテーションの損失関数
-    optimizer = optim.Adam(model.parameters(), lr=args.lerning_rate)
-    early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
+    # # 損失関数とオプティマイザ
+    # criterion = nn.CrossEntropyLoss()  # セマンティックセグメンテーションの損失関数
+    # optimizer = optim.Adam(model.parameters(), lr=args.lerning_rate)
+    # early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
 
-    #モデルの学習と学習曲線の出力
-    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, train_image_dir, graph_save_dir, model_save_dir)
+    # #モデルの学習と学習曲線の出力
+    # train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, train_image_dir, graph_save_dir, model_save_dir)
 
     return
 
-def map_mask_to_three_classes(masks):
-    # クラス1と2を0に置き換え、それ以外はそのまま残す
-    masks = torch.where((masks == 1) | (masks == 2), 0, masks)
-    masks = torch.where(masks == 3, 1, masks)
-    masks = torch.where(masks == 4, 2, masks)
+def map_mask_to_four_classes(masks):
+    """
+    マスクを4つのクラスにマッピングする関数。
+    例として、クラス 1, 2, 3, 4 をそれぞれ 0, 1, 2, 3 にマッピング。
+    """
+    # None チェックを追加
+    if masks is None:
+        raise ValueError("masks is None. Valid mask is required.")
+
+    # クラスのマッピングを実行（例: クラス1を0に、クラス2を1に、クラス3を2に、クラス4を3にマッピング）
+    masks = torch.where(masks == 1, torch.tensor(0, dtype=masks.dtype), masks)
+    masks = torch.where(masks == 2, torch.tensor(1, dtype=masks.dtype), masks)
+    masks = torch.where(masks == 3, torch.tensor(2, dtype=masks.dtype), masks)
+    masks = torch.where(masks == 4, torch.tensor(3, dtype=masks.dtype), masks)
+
     return masks
+
 
 
 def save_best_model(
@@ -284,17 +303,17 @@ def parse_args():
 
     parser.add_argument("--data_dir",
                         type=Path,
-                        default="../../../data/",
+                        default="../../data/",
                         help='入力データのディレクトリパス'
                         )
-    parser.add_argument("--mask_path",
+    parser.add_argument("--mask_dir",
                         type=Path,
-                        default="../../../data/paperbag.json",
+                        default="../../data/mask_json",
                         help='入力データのディレクトリパス'
                         )    
     parser.add_argument("--save_dir",
                         type=Path,
-                        default="../../../result/",
+                        default="../../result/",
                         help='結果を保存するディレクトリパス'
                         )
     parser.add_argument("--epochs",

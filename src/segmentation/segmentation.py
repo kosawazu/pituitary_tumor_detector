@@ -5,8 +5,8 @@ from pycocotools.coco import COCO
 import torch
 from torchvision import transforms
 import numpy as np
-from PIL import Image
-
+from PIL import Image, ImageDraw
+import json
 import matplotlib.pyplot as plt
 
 # fcn_resnet50用
@@ -17,91 +17,75 @@ transform = transforms.Compose([
 ])
 
 class SegmentationDataset(torch.utils.data.Dataset):
-    def __init__(self, annotation_file: Path, image_dir: Path, transform=None):
+    def __init__(self, annotation_dir: Path, image_dir: Path, transform=None):
         """
         Args:
-            annotation_file (Path): COCOフォーマットのアノテーションファイル（.json）
+            annotation_dir (Path): アノテーションファイルが含まれるディレクトリ
             image_dir (Path): 画像ファイルのディレクトリ
             transform (callable, optional): 画像に対して適用するトランスフォーム
         """
-        self.coco = COCO(str(annotation_file))  # Pathオブジェクトを文字列に変換
         self.image_dir = image_dir
         self.transform = transform
-        self.ids = list(self.coco.imgs.keys())
-
-        # もしリサイズトランスフォームが含まれていれば、リサイズの設定を抽出
-        self.resize_transform = None
-        if self.transform is not None:
-            for t in self.transform.transforms:
-                if isinstance(t, transforms.Resize):
-                    self.resize_transform = t
-                    break
+        
+        # ディレクトリ内のすべてのJSONファイルを取得
+        self.annotation_files = list(Path(annotation_dir).glob('*.json'))
 
     def __len__(self):
-        return len(self.ids)
+        return len(self.annotation_files)  # JSONファイルの数に基づいてデータセットの長さを決定
 
     def __getitem__(self, idx):
-        # 画像IDを取得
-        img_id = self.ids[idx]
-        # COCOアノテーションから画像メタデータを取得
-        img_metadata = self.coco.loadImgs(img_id)[0]
-        # 画像のパスを取得 (Path型を使用)
-        img_path = self.image_dir / img_metadata['file_name']
-        
+        # 該当するアノテーションファイルを読み込む
+        annotation_file = self.annotation_files[idx]
+        with open(annotation_file, 'r') as f:
+            data = json.load(f)
+
+        # 画像ファイル名を取得
+        img_metadata = data['asset']
+        img_filename = img_metadata['name']  # ファイル名のみ取得
+
+        # 画像のフルパスを作成 (image_dir からファイル名を探す)
+        img_path = self.image_dir / img_filename
+        print(f"Image path: {img_path}")
+
         # 画像の存在を確認、存在しない場合はスキップ
         if not img_path.exists():
             print(f"Image not found: {img_path}, skipping.")
-            return None
+            return None, None, None  # None を返すのではなく例外を処理する
 
         # 画像を読み込む
         try:
-            image = Image.open(img_path).convert('RGB')
+            image = Image.open(img_path).convert('RGB')  # 画像はPIL形式で読み込む
         except FileNotFoundError:
             print(f"Image not found: {img_path}, skipping.")
-            return None
+            return None, None, None
 
-        # アノテーションIDを取得
-        ann_ids = self.coco.getAnnIds(imgIds=img_id)
-        anns = self.coco.loadAnns(ann_ids)
+        # アノテーション領域を読み込む
+        mask = np.zeros((img_metadata['size']['height'], img_metadata['size']['width']), dtype=np.uint8)
 
-        # アノテーションが存在しない場合はスキップ
-        if len(anns) == 0:
-            print(f"No annotations found for image: {img_path}, skipping.")
-            return None
+        # アノテーション情報からマスクを作成
+        regions = data.get('regions', [])
+        for region in regions:
+            points = region['points']
+            polygon = [(point['x'], point['y']) for point in points]
 
-        # マスクを初期化（画像のサイズに対応した背景クラスのID 0 で初期化）
-        mask = np.zeros((img_metadata['height'], img_metadata['width']), dtype=np.uint8)
+            # ポリゴンをバイナリマスクに変換
+            img_mask = Image.new('L', (img_metadata['size']['width'], img_metadata['size']['height']), 0)
+            ImageDraw.Draw(img_mask).polygon(polygon, outline=1, fill=1)
+            region_mask = np.array(img_mask)
 
-        # 各アノテーションからセグメンテーションマスクを作成
-        for ann in anns:
-            m = self.coco.annToMask(ann)  # バイナリマスクを生成
-            
-            # カテゴリIDを取得
-            category_id = ann['category_id']
-            
-            # カテゴリ名を取得して確認
-            category_name = self.coco.loadCats(category_id)[0]['name']
-            # print(f"Category ID: {category_id}, Category Name: {category_name}")
-            
-            # カテゴリIDに基づいてマスクを作成
-            if category_id == 3:
-                mask = np.maximum(mask, m * 3)  # カテゴリID 3 はクラス3に
-            elif category_id == 4:
-                mask = np.maximum(mask, m * 4)  # カテゴリID 4 はクラス4に
+            # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
+            if "pituitary" in region['tags']:
+                mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
 
         # トランスフォームを適用（もし指定されていれば）
-        if self.transform is not None:
+        if self.transform is not None and isinstance(image, Image.Image):  # PIL.Imageのときのみトランスフォームを適用
             image = self.transform(image)  # 画像にリサイズ等のトランスフォームを適用
 
-        # もしリサイズトランスフォームがあれば、マスクにも適用
-        if self.resize_transform is not None:
-            mask = Image.fromarray(mask)
-            mask = self.resize_transform(mask)  # マスクを画像と同じサイズにリサイズ
-            mask = torch.as_tensor(np.array(mask), dtype=torch.int64)
-        else:
-            mask = torch.as_tensor(mask, dtype=torch.int64)  # マスクをTensorに変換
+        # マスクもTensorに変換
+        mask = torch.as_tensor(mask, dtype=torch.int64)
 
-        return image, mask, img_metadata['file_name']
+        return image, mask, img_filename
+
 
     def get_mean_std(self):
         """
