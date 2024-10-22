@@ -5,6 +5,7 @@ from pycocotools.coco import COCO
 import torch
 from torchvision import transforms
 import numpy as np
+import cv2
 from PIL import Image, ImageDraw
 import json
 import matplotlib.pyplot as plt
@@ -45,7 +46,6 @@ class SegmentationDataset(torch.utils.data.Dataset):
 
         # 画像のフルパスを作成 (image_dir からファイル名を探す)
         img_path = self.image_dir / img_filename
-        print(f"Image path: {img_path}")
 
         # 画像の存在を確認、存在しない場合はスキップ
         if not img_path.exists():
@@ -118,12 +118,13 @@ def segment_save(graph_save_dir, image_path, output_predictions):
         if output_predictions.dtype != np.uint8:
             output_predictions = output_predictions.astype(np.uint8)
         
-        # カラーマッピングの設定（背景: 青, 紙袋: 緑, 傷: 赤）
-        # ここで「紙袋」が緑で表示されるように設定
+        # カラーマッピングの設定（背景: 青, 紙袋: 緑, 傷: 赤, クラス4: 黄, クラス5: 紫）
         colors = {
-            0: (0, 0, 255),    # 背景 - 青
-            1: (0, 255, 0),    # 紙袋 - 緑
-            2: (255, 0, 0)     # 傷 - 赤
+            0: (0, 0, 255),      # 背景 - 青
+            1: (0, 255, 0),      # pituitary - 緑
+            2: (255, 0, 0),      # sellar - 赤
+            3: (255, 255, 0),    # tumor - 黄
+            4: (128, 0, 128)     # sella - 紫
         }
 
         # カラーマップに基づいて output_predictions を色付け
@@ -172,7 +173,9 @@ def visualize_random_sample_from_dataset(dataset, save_path: Path):
         unnormalized_image = (unnormalized_image * 255).astype(np.uint8)  # 0-1範囲から0-255範囲にスケーリング
     else:
         unnormalized_image = image
-    
+    if isinstance(mask, torch.Tensor):
+        mask = mask.cpu().numpy()
+    mask = cv2.resize(mask, (unnormalized_image.shape[1], unnormalized_image.shape[0]), interpolation=cv2.INTER_NEAREST)
     # マスクのオーバーレイの処理 (3クラスに対応)
     mask_overlay = np.array(unnormalized_image)
     
