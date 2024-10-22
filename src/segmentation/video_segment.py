@@ -17,7 +17,7 @@ sys.path.append("../")
 # 自作モジュール
 from segmentation import (
     transform, 
-    CocoSegmentationDataset,
+    SegmentationDataset,
     segment_save,
     visualize_random_sample_from_dataset
 )

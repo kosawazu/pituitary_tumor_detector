@@ -14,7 +14,7 @@ sys.path.append("../")
 # 自作モジュール
 from segmentation import (
     transform, 
-    CocoSegmentationDataset,
+    SegmentationDataset,
     segment_save,
     visualize_random_sample_from_dataset
 )
@@ -55,7 +55,7 @@ def main(args):
     device, model = setup_device(model)
 
     # データセットとデータローダの作成
-    dataset = CocoSegmentationDataset(mask_path, train_image_dir, transform)
+    dataset = SegmentationDataset(mask_path, train_image_dir, transform)
     train_dataset, valid_dataset, test_dataset = split_dataset(dataset, output_dir=others_save_dir / "split_dataset")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=0)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
