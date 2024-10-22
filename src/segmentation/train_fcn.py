@@ -71,7 +71,7 @@ def main(args):
 
     # マスクのラベルが指定したクラス数に収まっているか確認する例
     # マスクのラベルが指定したクラス数に収まっているか確認する例
-    mask = train_dataset[10][0]  # 0番目のサンプルのマスクを取得
+    mask = train_dataset[10][1]  # 0番目のサンプルのマスクを取得
     # mask = map_mask_to_four_classes(mask)  # クラスのマッピングを実行
     logger.info(f'Categories after mapping: {mask.unique()}')  # マスク内のユニークなクラスラベルを確認
 

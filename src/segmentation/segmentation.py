@@ -76,6 +76,12 @@ class SegmentationDataset(torch.utils.data.Dataset):
             # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
             if "pituitary" in region['tags']:
                 mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
+            elif "sellar" in region['tags']:
+                mask = np.maximum(mask, region_mask * 2)  # クラスID 2を使用
+            elif "tumor" in region['tags']:
+                mask = np.maximum(mask, region_mask * 3)  # クラスID 3を使用
+            elif "sella" in region['tags']:
+                mask = np.maximum(mask, region_mask * 4)  # クラスID 4を使用
 
         # トランスフォームを適用（もし指定されていれば）
         if self.transform is not None and isinstance(image, Image.Image):  # PIL.Imageのときのみトランスフォームを適用
