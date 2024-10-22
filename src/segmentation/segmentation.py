@@ -180,9 +180,11 @@ def visualize_random_sample_from_dataset(dataset, save_path: Path):
     mask_overlay = np.array(unnormalized_image)
     
     # マスクのクラスごとに異なる色を割り当てる
-    mask_overlay[mask == 1, :] = [255, 0, 0]  # クラス1: 赤
-    mask_overlay[mask == 2, :] = [0, 255, 0]  # クラス2: 緑
-    mask_overlay[mask == 0, :] = [0, 0, 255]  # クラス0（背景）: 青
+    mask_overlay[mask == 1, :] = [255, 0, 0]    # クラス1: 赤 (sellar)
+    mask_overlay[mask == 2, :] = [0, 255, 0]    # クラス2: 緑 (pituitary)
+    mask_overlay[mask == 3, :] = [255, 255, 0]  # クラス3: 黄 (tumor)
+    mask_overlay[mask == 4, :] = [128, 0, 128]  # クラス4: 紫 (sella)
+    mask_overlay[mask == 0, :] = [0, 0, 255]    # クラス0: 青 (背景)
 
     # 画像とマスクの表示
     fig, ax = plt.subplots(1, 2, figsize=(10, 5))

@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 def setup_fcn_model(
     model_name: str,
-    model_path: Path = None,
-    num_classes: int =3
+    num_classes: int =3,
+    model_path: Path = None
 ) -> nn.Module:
     # モデルのロード（事前学習済みのモデルをファインチューニング）
     model_dict = {

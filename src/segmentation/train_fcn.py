@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 import argparse
 import logging
 import sys
+import torch.nn.functional as F
 from typing import Tuple
 
 sys.path.append("../")
@@ -76,17 +77,17 @@ def main(args):
     logger.info(f'Categories after mapping: {mask.unique()}')  # マスク内のユニークなクラスラベルを確認
 
 
-    # # 実行時のモデルアーキテクチャとデータの可視化
-    # save_model_architecture(model, others_save_dir)
-    # visualize_random_sample_from_dataset(train_dataset, others_save_dir)
+    # 実行時のモデルアーキテクチャとデータの可視化
+    save_model_architecture(model, others_save_dir)
+    visualize_random_sample_from_dataset(train_dataset, others_save_dir)
 
-    # # 損失関数とオプティマイザ
-    # criterion = nn.CrossEntropyLoss()  # セマンティックセグメンテーションの損失関数
-    # optimizer = optim.Adam(model.parameters(), lr=args.lerning_rate)
-    # early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
+    # 損失関数とオプティマイザ
+    criterion = nn.CrossEntropyLoss()  # セマンティックセグメンテーションの損失関数
+    optimizer = optim.Adam(model.parameters(), lr=args.lerning_rate)
+    early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
 
-    # #モデルの学習と学習曲線の出力
-    # train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, train_image_dir, graph_save_dir, model_save_dir)
+    #モデルの学習と学習曲線の出力
+    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, train_image_dir, graph_save_dir, model_save_dir)
 
     return
 
@@ -177,9 +178,10 @@ def one_epoch_train(
         # 順伝播
         outputs = model(images)['out']
         logger.debug(f"Output shape: {outputs.shape}, Mask shape: {masks.shape}")
-        
+        masks_resized = resize_mask(masks)
+        logger.debug(f"Output shape: {outputs.shape}, MaskResized shape: {masks_resized.shape}")
         # 損失の計算
-        loss = criterion(outputs, masks.long())
+        loss = criterion(outputs, masks_resized.long())
         
         # 逆伝播と最適化
         loss.backward()
@@ -204,8 +206,9 @@ def eval_dataset(
             images, masks = images.to(device), masks.to(device)
             # 順伝播
             outputs = model(images)['out']
+            masks_resized = resize_mask(masks)
             # 損失の計算
-            loss = criterion(outputs, masks.long())
+            loss = criterion(outputs, masks_resized.long())
 
             running_loss += loss.item()
     return running_loss / len(data_loader)
@@ -231,8 +234,10 @@ def eval_dataset_and_save_images(
             # optimizer.zero_grad()
             # 順伝播
             outputs = model(images)['out']
+            
             # 損失の計算
-            loss = criterion(outputs, masks.long())
+            masks_resized = resize_mask(masks)
+            loss = criterion(outputs, masks_resized.long())
 
             running_loss += loss.item()
 
@@ -281,6 +286,11 @@ def plot_and_save_learning_curve(
     # 学習曲線をファイルに保存
     plt.savefig(graph_save_dir / Path("training_loss_curve.png"))
 
+def resize_mask(
+    mask: torch.Tensor
+) -> torch.Tensor:
+    return F.interpolate(mask.unsqueeze(1).float(), size=(520, 520), mode='nearest').squeeze(1).long()
+
 def parse_args():
     # オプションの解析
     parser = argparse.ArgumentParser(description="骨格データの生成")
@@ -322,7 +332,7 @@ def parse_args():
                         )
     parser.add_argument("--class_num",
                         type=int,
-                        default=3,
+                        default=5,
                         help='分類するクラス数'
                         )
     parser.add_argument(
