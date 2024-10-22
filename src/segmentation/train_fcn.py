@@ -90,22 +90,6 @@ def main(args):
 
     return
 
-def map_mask_to_four_classes(masks):
-    """
-    マスクを4つのクラスにマッピングする関数。
-    例として、クラス 1, 2, 3, 4 をそれぞれ 0, 1, 2, 3 にマッピング。
-    """
-    # None チェックを追加
-    if masks is None:
-        raise ValueError("masks is None. Valid mask is required.")
-
-    # クラスのマッピングを実行（例: クラス1を0に、クラス2を1に、クラス3を2に、クラス4を3にマッピング）
-    masks = torch.where(masks == 1, torch.tensor(0, dtype=masks.dtype), masks)
-    masks = torch.where(masks == 2, torch.tensor(1, dtype=masks.dtype), masks)
-    masks = torch.where(masks == 3, torch.tensor(2, dtype=masks.dtype), masks)
-    masks = torch.where(masks == 4, torch.tensor(3, dtype=masks.dtype), masks)
-
-    return masks
 
 
 
@@ -185,7 +169,7 @@ def one_epoch_train(
     for images, masks, _ in train_loader:
         images = images.to(device)
 
-        masks = map_mask_to_three_classes(masks).to(device)
+        masks = masks.to(device)
 
         # 勾配の初期化
         optimizer.zero_grad()
@@ -217,7 +201,7 @@ def eval_dataset(
     model.eval()
     with torch.no_grad():
         for images, masks, image_names in data_loader:
-            images, masks = images.to(device), map_mask_to_three_classes(masks).to(device)
+            images, masks = images.to(device), masks.to(device)
             # 順伝播
             outputs = model(images)['out']
             # 損失の計算
@@ -241,7 +225,7 @@ def eval_dataset_and_save_images(
     model.eval()
     with torch.no_grad():
         for images, masks, image_names in data_loader:
-            images, masks = images.to(device), map_mask_to_three_classes(masks).to(device)
+            images, masks = images.to(device), masks.to(device)
 
             # # 勾配の初期化
             # optimizer.zero_grad()
