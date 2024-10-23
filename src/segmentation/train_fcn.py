@@ -5,6 +5,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from datetime import datetime
 import argparse
 import logging
 import sys
@@ -42,7 +43,8 @@ def main(args):
     data_dir = args.data_dir
     mask_dir = args.mask_dir
     model_name = args.model_name
-    save_dir = args.save_dir / Path("nagoya", "training_results", model_name)
+    current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_dir = args.save_dir / Path(current_time, "nagoya", "training_results", model_name)
     epochs = args.epochs
     class_num = args.class_num
     train_image_dir = data_dir / Path("img")
@@ -61,20 +63,19 @@ def main(args):
 
     # データセットとデータローダの作成
     dataset = SegmentationDataset(mask_dir, train_image_dir, transform)
-    print(f"Total samples in dataset: {len(dataset)}")
+    logger.debug(f"Total samples in dataset: {len(dataset)}")
 
     # サンプルを取得して確認
     sample_idx = 0  # 確認したいインデックス
     image, mask, filename = dataset[sample_idx]  # 0番目のサンプルを取得
 
     if image is None or mask is None:
-        print(f"Sample {sample_idx} has no valid data.")
+        logger.debug(f"Sample {sample_idx} has no valid data.")
     train_dataset, valid_dataset, test_dataset = split_dataset(dataset, output_dir=others_save_dir / "split_dataset")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=0)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
+    # test_loader = DataLoader(test_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
 
-    # マスクのラベルが指定したクラス数に収まっているか確認する例
     # マスクのラベルが指定したクラス数に収まっているか確認する例
     mask = train_dataset[10][1]  # 0番目のサンプルのマスクを取得
     # mask = map_mask_to_four_classes(mask)  # クラスのマッピングを実行
