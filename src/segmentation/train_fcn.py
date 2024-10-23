@@ -193,26 +193,6 @@ def one_epoch_train(
 
     return epoch_loss
 
-def eval_dataset(
-    data_loader: DataLoader,   
-    device: torch.device,       
-    model: nn.Module,           
-    criterion: nn.Module,    
-) -> float :
-    running_loss = 0.
-    model.eval()
-    with torch.no_grad():
-        for images, masks, image_names in data_loader:
-            images, masks = images.to(device), masks.to(device)
-            # 順伝播
-            outputs = model(images)['out']
-            masks_resized = resize_mask(masks)
-            # 損失の計算
-            loss = criterion(outputs, masks_resized.long())
-
-            running_loss += loss.item()
-    return running_loss / len(data_loader)
-
 def eval_dataset_and_save_images(
     data_loader: DataLoader,   
     device: torch.device,       
