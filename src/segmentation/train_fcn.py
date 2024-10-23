@@ -30,6 +30,9 @@ from utils.model_utils import (
     setup_device,
     EarlyStopping
 )
+from utils.set_seed import (
+    seed_everything
+)
 
 logger = logging.getLogger(__name__)
 
@@ -384,6 +387,10 @@ def parse_args():
                         default=5,
                         help='分類するクラス数'
                         )
+    parser.add_argument("--seed",
+                        type=float,
+                        default=42
+                        )
     parser.add_argument(
                         '--loglevel',
                         default='INFO',  # デフォルトのログレベルをINFOに設定
@@ -394,6 +401,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    seed_everything(args.seed)
     logger.setLevel(args.loglevel.upper())
     logger.info("loglevel: %s", args.loglevel)
     lformat = "%(name)s <L%(lineno)s> [%(levelname)s] %(message)s"
