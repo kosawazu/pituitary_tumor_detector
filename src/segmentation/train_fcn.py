@@ -54,6 +54,8 @@ def main(args):
     os.makedirs(model_save_dir, exist_ok=True)
     os.makedirs(graph_save_dir, exist_ok=True)
 
+    #モデルの学習の際に重複時の優先度を決定する
+    priority = [4, 3, 2, 1, 0]
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
 
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
@@ -92,7 +94,7 @@ def main(args):
     early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
 
     #モデルの学習と学習曲線の出力
-    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, train_image_dir, graph_save_dir, model_save_dir)
+    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, priority, train_image_dir, graph_save_dir, model_save_dir)
 
     return
 
@@ -123,6 +125,7 @@ def train_model(
     epochs: int,
     early_stopping: EarlyStopping,
     class_num: int,
+    priority: List[int],
     data_dir: Path,
     graph_save_dir: Path,
     model_save_dir: Path                 
@@ -145,6 +148,7 @@ def train_model(
             model, 
             criterion,
             class_num,
+            priority,
             graph_save_dir / f"epoch_{epoch+1}",
             data_dir
             )
@@ -211,6 +215,7 @@ def eval_dataset_and_save_images(
     model: nn.Module,           
     criterion: nn.Module,   
     class_num: int, 
+    priority: List[int],
     seg_img_dir: Path = None,
     org_img_dir: Path = None
 ) -> float :
@@ -244,7 +249,7 @@ def eval_dataset_and_save_images(
                     segment_save(seg_img_dir, org_img_dir / image_name, output_prediction)
             
             # 各クラスごとのIoUを計算
-            iou = calculate_iou(preds, masks, num_classes=5)  # 5クラスの場合
+            iou = calculate_priority_based_iou(preds, masks, class_num, priority)  # 5クラスの場合
             ious.append(iou)
 
     return running_loss / len(data_loader), ious
@@ -312,7 +317,15 @@ def plot_and_save_iou_curve(
     plt.close()
 
 # IoUを計算する関数
-def calculate_iou(pred: np.ndarray, target: torch.Tensor, num_classes: int) -> List[float]:
+def calculate_priority_based_iou(
+    pred: np.ndarray, 
+    target: torch.Tensor, 
+    num_classes: int, 
+    priority: List[int]  # priorityはクラスIDなのでint型に修正
+) -> List[float]:
+    """
+    優先度に基づくIoU計算。重複しているピクセルを優先度に基づいて適切に評価。
+    """
     # predがNumPy配列の場合、テンソルに変換
     pred = torch.tensor(pred)
 
@@ -331,13 +344,21 @@ def calculate_iou(pred: np.ndarray, target: torch.Tensor, num_classes: int) -> L
     for cls in range(num_classes):
         pred_inds = (pred == cls)
         target_inds = (target == cls)
-        intersection = (pred_inds & target_inds).sum().float().item()
-        union = (pred_inds | target_inds).sum().float().item()
-        if union == 0:
-            ious.append(float('nan'))  # もしクラスが存在しなければNaNを追加
+        
+        # 優先順位に基づく調整
+        if cls in priority:
+            intersection = (pred_inds & target_inds).sum().float().item()
+            union = (pred_inds | target_inds).sum().float().item()
+            if union == 0:
+                ious.append(float('nan'))  # クラスが存在しなければNaNを追加
+            else:
+                ious.append(intersection / union)
         else:
-            ious.append(intersection / union)
+            ious.append(float('nan'))  # クラスが存在しなければNaNを追加
+
     return ious
+
+
 
 def resize_mask(
     mask: torch.Tensor
