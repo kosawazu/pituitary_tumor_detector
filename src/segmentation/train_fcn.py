@@ -44,7 +44,7 @@ def main(args):
     mask_dir = args.mask_dir
     model_name = args.model_name
     current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    save_dir = args.save_dir / Path(current_time, "nagoya", "training_results", model_name)
+    save_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     epochs = args.epochs
     class_num = args.class_num
     train_image_dir = data_dir / Path("img")
