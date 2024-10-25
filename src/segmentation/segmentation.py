@@ -122,10 +122,10 @@ def segment_save(graph_save_dir, image_path, output_predictions):
         # カラーマッピングの設定（背景: 青, 紙袋: 緑, 傷: 赤, クラス4: 黄, クラス5: 紫）
         colors = {
             0: (0, 0, 255),      # 背景 - 青
-            1: (0, 255, 0),      # pituitary - 緑
-            2: (255, 0, 0),      # sellar - 赤
-            3: (255, 255, 0),    # tumor - 黄
-            4: (128, 0, 128)     # sella - 紫
+            1: (0, 255, 0),      # sellar - 緑
+            2: (255, 0, 0),      # sella - 赤
+            3: (255, 255, 0),    # pituitary - 黄
+            4: (128, 0, 128)     # tumor - 紫
         }
 
         # カラーマップに基づいて output_predictions を色付け
@@ -182,9 +182,9 @@ def visualize_random_sample_from_dataset(dataset, save_path: Path):
     
     # マスクのクラスごとに異なる色を割り当てる
     mask_overlay[mask == 1, :] = [255, 0, 0]    # クラス1: 赤 (sellar)
-    mask_overlay[mask == 2, :] = [0, 255, 0]    # クラス2: 緑 (pituitary)
-    mask_overlay[mask == 3, :] = [255, 255, 0]  # クラス3: 黄 (tumor)
-    mask_overlay[mask == 4, :] = [128, 0, 128]  # クラス4: 紫 (sella)
+    mask_overlay[mask == 2, :] = [0, 255, 0]    # クラス2: 緑 (sella)
+    mask_overlay[mask == 3, :] = [255, 255, 0]  # クラス3: 黄 (pituitary)
+    mask_overlay[mask == 4, :] = [128, 0, 128]  # クラス4: 紫 (tumor)
     mask_overlay[mask == 0, :] = [0, 0, 255]    # クラス0: 青 (背景)
 
     # 画像とマスクの表示
