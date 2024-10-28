@@ -7,15 +7,20 @@ import torch
 import sys
 from PIL import Image
 import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image, ImageDraw
+import torch.nn.functional as F
+from sklearn.metrics import confusion_matrix
 
 from typing import Tuple, List
 sys.path.append("../")
 # 自作モジュール
 from segmentation import (
     transform, 
-    SegmentationDataset,
     segment_save,
-    visualize_random_sample_from_dataset
+    calculate_iou_from_confusion_matrix,
+    save_confusion_matrix_with_metrics,
+    save_iou_to_csv_from_conf_matrix
 )
 
 from utils.model_utils import (
@@ -31,11 +36,15 @@ def main(args):
     model_name = args.model_name
     model_data_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     test_text_file_path = model_data_dir / Path(f"others/split_dataset/test_filenames.txt")
-    segment_save_dir = model_data_dir / Path("test", model_name)
+    segment_save_dir = model_data_dir / Path("test", "segment_image")
+    metrics_segment_save_dir = model_data_dir / Path("test", "metrics")
     model_path = model_data_dir / Path("model", "best_model_segment.pth")
     file_names_list = get_test_image_name(test_text_file_path)
-    test_image_paths = get_test_image_path(file_names_list, data_dir)
+    test_image_paths, test_true_labels = get_test_image_paths_and_labels(file_names_list, data_dir)
     os.makedirs(segment_save_dir, exist_ok=True)
+    os.makedirs(metrics_segment_save_dir, exist_ok=True)
+    class_names = ['background', 'sellar', 'sella', 'pituitary', 'tumor']
+    num_classes = len(class_names)
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
     logger.info(model_path)
@@ -46,7 +55,13 @@ def main(args):
     # モデルを推論モードに設定
     model.eval()
 
-    for test_image_path in test_image_paths:
+    iou_results_list = []
+    image_paths = []  # 各画像のパスを保存するリスト
+
+    all_ground_truths = []
+    all_predictions = []
+
+    for test_image_path, test_image_label in zip(test_image_paths, test_true_labels):
         # 入力画像を読み込み、前処理
         img = Image.open(test_image_path).convert('RGB')
         input_tensor = transform(img)
@@ -57,15 +72,25 @@ def main(args):
             output = model(input_batch)['out']  # FCNの出力
 
         # 各ピクセルに最も確率の高いクラスを割り当てる
-        output_predictions = output.argmax(1).squeeze().cpu().numpy()
+        output_resized = F.interpolate(output, size=test_image_label.shape[-2:], mode='bilinear', align_corners=False)
+        output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
 
-        if 2 not in output_predictions:  # クラスインデックス2（傷）がない場合
-        # 「紙袋」の色を緑（クラスインデックス1のまま）に強制
-        # ここでは「紙袋」(1)をそのままにして、セグメント保存関数で色をマッピング
-        # もしくは配色を変更したい場合はこちらで値を変換できる
-            pass
+        # ピクセルごとに予測ラベルと正解ラベルをフラットにする
+        all_ground_truths.append(test_image_label.flatten())
+        all_predictions.append(output_predictions.flatten())
 
-        segment_save(segment_save_dir, test_image_path, output_predictions)
+    # すべての画像の正解ラベルと予測ラベルをまとめる
+    all_ground_truths = np.concatenate(all_ground_truths)
+    all_predictions = np.concatenate(all_predictions)
+
+    # ピクセル単位の混同行列を作成
+    conf_matrix = confusion_matrix(all_ground_truths, all_predictions, labels=list(range(num_classes)))
+    # 混同行列とメトリクスを保存
+    save_confusion_matrix_with_metrics(conf_matrix, metrics_segment_save_dir, class_names)
+    # CSVにIoU結果を保存
+    save_iou_to_csv_from_conf_matrix(conf_matrix, class_names, metrics_segment_save_dir, num_classes)
+    
+
 
 def get_test_image_name(
     txt_file_path: Path
@@ -80,45 +105,78 @@ def get_test_image_name(
 
     return file_names_list
 
-def get_test_image_path(
+# 推論結果を正解ラベルのサイズにリサイズ
+def resize_predictions(output_predictions: np.ndarray, target_shape: Tuple[int, int]) -> np.ndarray:
+    # output_predictionsをPIL画像に変換してリサイズ
+    prediction_image = Image.fromarray(output_predictions.astype(np.uint8), mode='L')
+    resized_prediction = prediction_image.resize(target_shape, Image.NEAREST)
+    
+    # リサイズ後の画像をNumPy配列に戻す
+    return np.array(resized_prediction)
+
+def get_test_image_paths_and_labels(
     file_names_list: List[str],
     data_dir: Path
-) -> List[Path]:
-    test_image_paths = []
-    image_dir  = data_dir / Path("img")
-    json_dir  = data_dir / Path("mask_json")
+) -> Tuple[List[Path], List[np.ndarray]]:
+    image_paths = []
+    labels = []
+    image_dir = data_dir / Path("img")
+    json_dir = data_dir / Path("mask_json")
+
     for json_file_name in file_names_list:
         # JSONファイルのフルパスを作成
         json_file_path = json_dir / Path(json_file_name)
-        
+
         # JSONファイルが存在するか確認
         if not json_file_path.exists():
-            logger.info(f"Warning: JSON file {json_file_name} not found in {json_dir}")
+            print(f"Warning: JSON file {json_file_name} not found in {json_dir}")
             continue  # 次のファイルに進む
-        
+
         # JSONファイルを読み込む
         with open(json_file_path, 'r') as f:
             data = json.load(f)
-        
-        # JSON内から画像ファイル名を取得
-        img_metadata = data.get('asset', {})
-        img_filename = img_metadata.get('name')
-        
-        if img_filename is None:
-            logger.info(f"Warning: Image filename not found in {json_file_name}")
-            continue  # 次のファイルに進む
-        
-        # 画像ファイルのフルパスを作成
-        img_path = image_dir / Path(img_filename)
-        
+
+        # 画像ファイル名を取得
+        img_metadata = data['asset']
+        img_filename = img_metadata['name']  # ファイル名のみ取得
+
+        # 画像ファイルのフルパスを作成 (image_dir からファイル名を探す)
+        img_path = image_dir / img_filename
+
         # 画像ファイルが存在するか確認
-        if img_path.exists():
-            test_image_paths.append(img_path)
-        else:
-            # 画像ファイルが見つからなかった場合の警告
-            logger.info(f"Warning: Image {img_filename} not found in {image_dir}")
-    
-    return test_image_paths
+        if not img_path.exists():
+            print(f"Image not found: {img_path}, skipping.")
+            continue
+
+        # アノテーション領域を読み込む
+        mask = np.zeros((img_metadata['size']['height'], img_metadata['size']['width']), dtype=np.uint8)
+
+        # アノテーション情報からマスクを作成
+        regions = data.get('regions', [])
+        for region in regions:
+            points = region['points']
+            polygon = [(point['x'], point['y']) for point in points]
+
+            # ポリゴンをバイナリマスクに変換
+            img_mask = Image.new('L', (img_metadata['size']['width'], img_metadata['size']['height']), 0)
+            ImageDraw.Draw(img_mask).polygon(polygon, outline=1, fill=1)
+            region_mask = np.array(img_mask)
+
+            # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
+            if "sellar" in region['tags']:
+                mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
+            elif "sella" in region['tags']:
+                mask = np.maximum(mask, region_mask * 2)  # クラスID 2を使用
+            elif "pituitary" in region['tags']:
+                mask = np.maximum(mask, region_mask * 3)  # クラスID 3を使用
+            elif "tumor" in region['tags']:
+                mask = np.maximum(mask, region_mask * 4)  # クラスID 4を使用
+
+        # 画像パスとラベルをそれぞれのリストに追加
+        image_paths.append(img_path)
+        labels.append(mask)
+
+    return image_paths, labels
 
 
 def parse_args():
