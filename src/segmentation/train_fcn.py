@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 def main(args):
+    # 必要な変数の定義とディレクトリの作成
     data_dir = args.data_dir
     mask_dir = args.mask_dir
     model_name = args.model_name
@@ -54,18 +55,19 @@ def main(args):
     os.makedirs(model_save_dir, exist_ok=True)
     os.makedirs(graph_save_dir, exist_ok=True)
 
-    #モデルの学習の際に重複時の優先度を決定する
+    #モデルの学習の際にアノテーション重複時の優先度を決定する（値の対応はSegmentationDatasetを確認）
     priority = [4, 3, 2, 1, 0]
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
 
-    # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
+    # COCOデータセットで事前学習されたモデルをロード
     model = setup_fcn_model(model_name, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model)
 
-    # データセットとデータローダの作成
+    # データセットの作成
     dataset = SegmentationDataset(mask_dir, train_image_dir, transform)
-    logger.debug(f"Total samples in dataset: {len(dataset)}")
+    #データ数の確認
+    logger.info(f"Total samples in dataset: {len(dataset)}")
 
     # サンプルを取得して確認
     sample_idx = 0  # 確認したいインデックス
@@ -73,6 +75,7 @@ def main(args):
 
     if image is None or mask is None:
         logger.debug(f"Sample {sample_idx} has no valid data.")
+    # データセットを指定した比率でtrain,val,testに分割をし、それぞれのデータローダーの作成
     train_dataset, valid_dataset, test_dataset = split_dataset(dataset, output_dir=others_save_dir / "split_dataset")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=0)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
@@ -81,25 +84,23 @@ def main(args):
     # マスクのラベルが指定したクラス数に収まっているか確認する例
     mask = train_dataset[10][1]  # 0番目のサンプルのマスクを取得
     # mask = map_mask_to_four_classes(mask)  # クラスのマッピングを実行
-    logger.info(f'Categories after mapping: {mask.unique()}')  # マスク内のユニークなクラスラベルを確認
+    logger.debug(f'Categories after mapping: {mask.unique()}')  # マスク内のユニークなクラスラベルを確認
 
 
-    # 実行時のモデルアーキテクチャとデータの可視化
+    # 実行時のモデルアーキテクチャとデータの可視化(確認用)
     save_model_architecture(model, others_save_dir)
     visualize_random_sample_from_dataset(train_dataset, others_save_dir)
 
-    # 損失関数とオプティマイザ
+    # 損失関数と最適化手法
     criterion = nn.CrossEntropyLoss()  # セマンティックセグメンテーションの損失関数
-    optimizer = optim.Adam(model.parameters(), lr=args.lerning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    # 早期終了の定義（patienceで監視するエポック数を指定）
     early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
 
     #モデルの学習と学習曲線の出力
     train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, priority, train_image_dir, graph_save_dir, model_save_dir)
 
     return
-
-
-
 
 def save_best_model(
     model: nn.Module, 
@@ -129,12 +130,12 @@ def train_model(
     data_dir: Path,
     graph_save_dir: Path,
     model_save_dir: Path                 
-) -> None:                    
+) -> None:                  
+    """"""  
     logger.info("学習を開始します。")  
-    # 損失を記録するリスト
+    # 損失,iousをエポックごとに記録する用のリスト
     train_losses = []
     valid_losses = []
-    # 各エポックごとのIoUを格納するリスト
     epoch_ious = []
     best_loss = float('inf')  
     for epoch in range(epochs):
@@ -180,7 +181,10 @@ def one_epoch_train(
     criterion: nn.Module,       
     epoch: int,                 
     epochs: int                 
-) -> float:                     
+) -> float:           
+    """
+    1エポックごとのモデルの学習を行う関数
+    """          
     running_loss = 0.0
     model.train()
     for images, masks, _ in train_loader:
@@ -191,11 +195,11 @@ def one_epoch_train(
         # 勾配の初期化
         optimizer.zero_grad()
 
-        # 順伝播
+        # モデルの出力
         outputs = model(images)['out']
-        logger.debug(f"Output shape: {outputs.shape}, Mask shape: {masks.shape}")
-        masks_resized = resize_mask(masks)
-        logger.debug(f"Output shape: {outputs.shape}, MaskResized shape: {masks_resized.shape}")
+        output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
+        masks_resized = resize_mask(masks, output_size)  # リサイズする
+        logger.debug(f"Output shape: {outputs.shape}, Mask shape: {masks.shape} => MaskResized shape: {masks_resized.shape}")
         # 損失の計算
         loss = criterion(outputs, masks_resized.long())
         
@@ -235,7 +239,8 @@ def eval_dataset_and_save_images(
             outputs = model(images)['out']
             
             # 損失の計算
-            masks_resized = resize_mask(masks)
+            output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
+            masks_resized = resize_mask(masks, output_size)  # リサイズする
             loss = criterion(outputs, masks_resized.long())
 
             running_loss += loss.item()
@@ -358,16 +363,15 @@ def calculate_priority_based_iou(
 
     return ious
 
-
-
 def resize_mask(
-    mask: torch.Tensor
+    mask: torch.Tensor,
+    output_size: Tuple[int, int]  # モデルの出力サイズを引数に追加
 ) -> torch.Tensor:
-    return F.interpolate(mask.unsqueeze(1).float(), size=(520, 520), mode='nearest').squeeze(1).long()
+    return F.interpolate(mask.unsqueeze(1).float(), size=output_size, mode='nearest').squeeze(1).long()
 
 def parse_args():
     # オプションの解析
-    parser = argparse.ArgumentParser(description="骨格データの生成")
+    parser = argparse.ArgumentParser(description="脳下垂体腫瘍の検知")
 
     parser.add_argument("--data_dir",
                         type=Path,
@@ -390,13 +394,15 @@ def parse_args():
                         )
     parser.add_argument("--model_name",
                         type=str,
-                        default="fcn_resnet50"
+                        default="fcn_resnet50",
+                        choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19"],
+                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19."
                         )
     parser.add_argument("--batch_size",
                         type=int,
                         default=20
                         )
-    parser.add_argument("--lerning_rate",
+    parser.add_argument("--learning_rate",
                         type=float,
                         default=1e-4
                         )
@@ -423,6 +429,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    #再現性確保のためのseed値固定
     seed_everything(args.seed)
     logger.setLevel(args.loglevel.upper())
     logger.info("loglevel: %s", args.loglevel)
