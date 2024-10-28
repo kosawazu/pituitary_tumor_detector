@@ -197,6 +197,7 @@ def one_epoch_train(
 
         # モデルの出力
         outputs = model(images)['out']
+        logger.debug(f"モデルの出力値のサイズ:{outputs.shape}")
         output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
         masks_resized = resize_mask(masks, output_size)  # リサイズする
         logger.debug(f"Output shape: {outputs.shape}, Mask shape: {masks.shape} => MaskResized shape: {masks_resized.shape}")
