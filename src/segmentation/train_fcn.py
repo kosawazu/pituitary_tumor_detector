@@ -11,7 +11,9 @@ import logging
 import sys
 import torch.nn.functional as F
 import numpy as np
+from sklearn.metrics import confusion_matrix
 from typing import Tuple, List
+
 
 sys.path.append("../")
 # 自作モジュール
@@ -19,7 +21,9 @@ from segmentation import (
     transform, 
     SegmentationDataset,
     segment_save,
-    visualize_random_sample_from_dataset
+    visualize_random_sample_from_dataset,
+    save_confusion_matrix_with_metrics,
+    save_iou_to_csv_from_conf_matrix
 )
 
 from preprocessing.split_dataset import (
@@ -51,12 +55,15 @@ def main(args):
     train_image_dir = data_dir / Path("img")
     model_save_dir = save_dir / Path( "model")
     graph_save_dir = save_dir / Path("graph")
+    metrics_save_dir = save_dir / Path("metrics")
     others_save_dir = save_dir / Path("others")
     os.makedirs(model_save_dir, exist_ok=True)
     os.makedirs(graph_save_dir, exist_ok=True)
+    os.makedirs(metrics_save_dir, exist_ok=True)
 
     #モデルの学習の際にアノテーション重複時の優先度を決定する（値の対応はSegmentationDatasetを確認）
     priority = [4, 3, 2, 1, 0]
+    class_names = ['background', 'sellar', 'sella', 'pituitary', 'tumor']
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
 
     # COCOデータセットで事前学習されたモデルをロード
@@ -98,7 +105,7 @@ def main(args):
     early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
 
     #モデルの学習と学習曲線の出力
-    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, priority, train_image_dir, graph_save_dir, model_save_dir)
+    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, priority, class_names, train_image_dir, graph_save_dir, model_save_dir, metrics_save_dir)
 
     return
 
@@ -127,9 +134,11 @@ def train_model(
     early_stopping: EarlyStopping,
     class_num: int,
     priority: List[int],
+    class_names: List[str],
     data_dir: Path,
     graph_save_dir: Path,
-    model_save_dir: Path                 
+    model_save_dir: Path,
+    metrics_save_dir: Path               
 ) -> None:                  
     """"""  
     logger.info("学習を開始します。")  
@@ -171,6 +180,8 @@ def train_model(
         if early_stopping(val_loss):
             logger.info(f"Early stopping triggered at epoch {epoch+1}")
             break
+    save_metrics(model, train_loader, device, class_num, class_names, metrics_save_dir)
+    save_metrics(model, valid_loader, device, class_num, class_names, metrics_save_dir)
 
 
 def one_epoch_train(
@@ -261,7 +272,10 @@ def eval_dataset_and_save_images(
     return running_loss / len(data_loader), ious
 
 # モデルアーキテクチャを保存する関数
-def save_model_architecture(model: torch.nn.Module, save_path: Path):
+def save_model_architecture(
+    model: torch.nn.Module, 
+    save_path: Path
+) -> None:
     # モデルアーキテクチャを文字列化
     model_str = str(model)
 
@@ -363,6 +377,38 @@ def calculate_priority_based_iou(
             ious.append(float('nan'))  # クラスが存在しなければNaNを追加
 
     return ious
+
+def save_metrics(model, test_loader, device, num_classes, class_names, save_path):
+    model.eval()
+    all_predictions = []
+    all_ground_truths = []
+
+    with torch.no_grad():
+        for images, masks, _ in test_loader:
+            images = images.to(device)
+            masks = masks.to(device)
+
+            # モデルの出力
+            outputs = model(images)['out']
+            output_resized = F.interpolate(outputs, size=masks.shape[-2:], mode='bilinear', align_corners=False)
+            output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
+
+            # ピクセル単位で予測ラベルと正解ラベルをフラットにする
+            all_predictions.append(output_predictions.flatten())
+            all_ground_truths.append(masks.cpu().numpy().flatten())
+
+    # すべての画像の正解ラベルと予測ラベルをまとめる
+    all_predictions = np.concatenate(all_predictions)
+    all_ground_truths = np.concatenate(all_ground_truths)
+
+    # 混同行列の作成
+    conf_matrix = confusion_matrix(all_ground_truths, all_predictions, labels=list(range(num_classes)))
+
+    # 混同行列とIoUを保存
+    save_confusion_matrix_with_metrics(conf_matrix, save_path, class_names)
+    save_iou_to_csv_from_conf_matrix(conf_matrix, class_names, save_path, num_classes)
+
+    logger.info("IoU and Confusion Matrix saved.")
 
 def resize_mask(
     mask: torch.Tensor,
