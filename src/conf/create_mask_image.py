@@ -1,10 +1,9 @@
-import json
-import numpy as np
-import cv2
 from PIL import Image, ImageDraw
+import numpy as np
+import json
 from pathlib import Path
 
-def process_segmentation_from_json(annotation_dir: Path, image_dir: Path, output_dir: Path):
+def process_segmentation_from_json(annotation_dir: Path, image_dir: Path, output_dir: Path, alpha=0.5):
     # JSONファイルが含まれるディレクトリ内のすべてのJSONファイルを取得
     annotation_files = list(Path(annotation_dir).glob('*.json'))
 
@@ -16,10 +15,10 @@ def process_segmentation_from_json(annotation_dir: Path, image_dir: Path, output
 
     # 各クラスに対応する色を設定
     color_map = {
-        "pituitary": (255, 0, 0),  # クラス1: 赤
-        "sellar": (0, 255, 0),     # クラス2: 緑
-        "tumor": (0, 0, 255),      # クラス3: 青
-        "sella": (255, 255, 0),    # クラス4: 黄色
+        "pituitary": (255, 255, 0),  # pituitary - 黄
+        "sellar": (0, 255, 0),     # sellar - 緑
+        "tumor": (128, 0, 128),      # tumor - 紫
+        "sella": (255, 0, 0),    # sella - 赤
     }
 
     for annotation_file in annotation_files:
@@ -36,7 +35,7 @@ def process_segmentation_from_json(annotation_dir: Path, image_dir: Path, output
 
         # 画像を読み込む
         try:
-            image = Image.open(img_path).convert('RGB')  # 画像はPIL形式で読み込む
+            original_image = Image.open(img_path).convert('RGB')  # 画像はPIL形式で読み込む
         except FileNotFoundError:
             print(f"Image not found: {img_path}, skipping.")
             continue
@@ -58,20 +57,24 @@ def process_segmentation_from_json(annotation_dir: Path, image_dir: Path, output
                     region_mask = np.array(img_mask)
 
                     # 領域のタグに基づいてクラスごとの色を適用
-                    colored_region = np.array(Image.new('RGB', (img_metadata['size']['width'], img_metadata['size']['height']), color=color_map[tag]))
-                    mask = np.where(region_mask[:, :, None], colored_region, mask)
+                    colored_region = Image.new('RGB', (img_metadata['size']['width'], img_metadata['size']['height']), color=color_map[tag])
+                    colored_region_np = np.array(colored_region)
 
-        # 元画像とカラーマスクを重ね合わせ
-        image_np = np.array(image)
-        blended_image = cv2.addWeighted(image_np, 0.7, np.array(mask), 0.3, 0)
+                    # マスクに塗りつぶし
+                    mask = np.where(region_mask[:, :, None], colored_region_np, mask)
+
+        # NumPy配列からPIL画像に変換
+        mask_image = Image.fromarray(mask.astype(np.uint8))
+
+        # 元画像とマスクをブレンド
+        blended_image = Image.blend(original_image, mask_image, alpha=alpha)
 
         # 出力ファイルパスを作成
         output_filename = f"segmented_{img_filename}"
         output_image_path = output_dir / output_filename
 
         # 結果を保存
-        output_image = Image.fromarray(blended_image)
-        output_image.save(output_image_path)
+        blended_image.save(output_image_path)
         print(f"Saved segmented image: {output_image_path}")
 
 
