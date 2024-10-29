@@ -18,6 +18,7 @@ sys.path.append("../")
 from segmentation import (
     transform, 
     segment_save,
+    save_blended_image,
     calculate_iou_from_confusion_matrix,
     save_confusion_matrix_with_metrics,
     save_iou_to_csv_from_conf_matrix
@@ -37,11 +38,13 @@ def main(args):
     model_data_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     test_text_file_path = model_data_dir / Path(f"others/split_dataset/test_filenames.txt")
     segment_save_dir = model_data_dir / Path("test", "segment_image")
+    blended_segment_save_dir = model_data_dir / Path("test", "blend_image")
     metrics_segment_save_dir = model_data_dir / Path("test", "metrics")
     model_path = model_data_dir / Path("model", "best_model_segment.pth")
     file_names_list = get_test_image_name(test_text_file_path)
     test_image_paths, test_true_labels = get_test_image_paths_and_labels(file_names_list, data_dir)
     os.makedirs(segment_save_dir, exist_ok=True)
+    os.makedirs(blended_segment_save_dir, exist_ok=True)
     os.makedirs(metrics_segment_save_dir, exist_ok=True)
     class_names = ['background', 'sellar', 'sella', 'pituitary', 'tumor']
     num_classes = len(class_names)
@@ -78,6 +81,10 @@ def main(args):
         # ピクセルごとに予測ラベルと正解ラベルをフラットにする
         all_ground_truths.append(test_image_label.flatten())
         all_predictions.append(output_predictions.flatten())
+        #セグメントした画像を保存
+        segment_save(segment_save_dir, test_image_path, output_predictions)
+        save_blended_image(blended_segment_save_dir, test_image_path, output_predictions)
+
 
     # すべての画像の正解ラベルと予測ラベルをまとめる
     all_ground_truths = np.concatenate(all_ground_truths)

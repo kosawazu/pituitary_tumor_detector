@@ -18,6 +18,13 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
+colors = {
+            0: (0, 0, 255),      # 背景 - 青
+            1: (0, 255, 0),      # sellar - 緑
+            2: (255, 0, 0),      # sella - 赤
+            3: (255, 255, 0),    # pituitary - 黄
+            4: (128, 0, 128)     # tumor - 紫
+        }
 class SegmentationDataset(torch.utils.data.Dataset):
     def __init__(self, annotation_dir: Path, image_dir: Path, transform=None):
         """
@@ -121,13 +128,6 @@ def segment_save(graph_save_dir, image_path, output_predictions):
             output_predictions = output_predictions.astype(np.uint8)
         
         # カラーマッピングの設定（背景: 青, 紙袋: 緑, 傷: 赤, クラス4: 黄, クラス5: 紫）
-        colors = {
-            0: (0, 0, 255),      # 背景 - 青
-            1: (0, 255, 0),      # sellar - 緑
-            2: (255, 0, 0),      # sella - 赤
-            3: (255, 255, 0),    # pituitary - 黄
-            4: (128, 0, 128)     # tumor - 紫
-        }
 
         # カラーマップに基づいて output_predictions を色付け
         output_colored = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
@@ -141,7 +141,7 @@ def segment_save(graph_save_dir, image_path, output_predictions):
     output_image_resized = output_image.resize(img.size, resample=Image.NEAREST)
 
     # プロットの設定（2つのサブプロットを横並び）
-    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+    _, ax = plt.subplots(1, 2, figsize=(20, 10))
 
     # 元画像を表示
     ax[0].imshow(img)
@@ -157,6 +157,43 @@ def segment_save(graph_save_dir, image_path, output_predictions):
     save_path = graph_save_dir / Path(image_path).stem  # 保存パスの設定
     plt.savefig(f'{save_path}_comparison.png', bbox_inches=None, pad_inches=0.1)  # 保存
     plt.close()  # メモリを節約するためにプロットを閉じる
+
+def save_blended_image(save_dir, original_image_path, output_predictions, alpha=0.5):
+    """
+    元画像とセグメンテーション結果を重ね合わせ、指定された保存先に保存する関数。
+
+    Args:
+        output_predictions (np.ndarray): セグメンテーション結果の予測ラベル
+        original_image_path (str): 元画像のパス
+        save_dir (Path): 保存先のディレクトリ
+        alpha (float): 元画像とセグメンテーション結果を重ねる割合（0.0～1.0）。デフォルトは0.5。
+    """
+    # 元画像の読み込み
+    original_image = Image.open(original_image_path).convert('RGB')
+
+    # output_predictions からカラー画像を作成
+    output_colored = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
+    for class_index, color in colors.items():
+        if class_index == 0:  # 背景クラスを除く
+            continue
+        output_colored[output_predictions == class_index] = color
+
+    # PIL画像に変換
+    segmentation_image = Image.fromarray(output_colored)
+
+    # セグメンテーション結果のサイズを元画像に合わせる
+    segmentation_image_resized = segmentation_image.resize(original_image.size, resample=Image.NEAREST)
+
+    # 元画像とセグメンテーション結果を重ね合わせ
+    blended_image = Image.blend(original_image, segmentation_image_resized, alpha=alpha)
+
+    # 保存パスの設定
+    save_path = save_dir / f"{Path(original_image_path).stem}_blended.png"
+
+    # 重ね合わせた画像を保存
+    blended_image.save(save_path)
+
+    print(f"Blended image saved to {save_path}")
 
 def calculate_iou_from_confusion_matrix(conf_matrix, num_classes):
     """
