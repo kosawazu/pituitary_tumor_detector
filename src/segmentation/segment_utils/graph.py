@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
+import torch
 from pathlib import Path
 from typing import List
+
 
 def plot_and_save_learning_curve(
     epochs: int, 
@@ -23,6 +25,7 @@ def plot_and_save_learning_curve(
     
     # 学習曲線をファイルに保存
     plt.savefig(graph_save_dir / Path("training_loss_curve.png"))
+    plt.close()  # 図を閉じる
 
 def plot_and_save_iou_curve(
     epochs: int,
