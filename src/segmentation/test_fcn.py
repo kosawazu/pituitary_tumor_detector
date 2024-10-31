@@ -57,9 +57,6 @@ def main(args):
     # モデルを推論モードに設定
     model.eval()
 
-    iou_results_list = []
-    image_paths = []  # 各画像のパスを保存するリスト
-
     all_ground_truths = []
     all_predictions = []
 
@@ -112,7 +109,10 @@ def get_test_image_name(
     return file_names_list
 
 # 推論結果を正解ラベルのサイズにリサイズ
-def resize_predictions(output_predictions: np.ndarray, target_shape: Tuple[int, int]) -> np.ndarray:
+def resize_predictions(
+    output_predictions: np.ndarray, 
+    target_shape: Tuple[int, int]
+) -> np.ndarray:
     # output_predictionsをPIL画像に変換してリサイズ
     prediction_image = Image.fromarray(output_predictions.astype(np.uint8), mode='L')
     resized_prediction = prediction_image.resize(target_shape, Image.NEAREST)
