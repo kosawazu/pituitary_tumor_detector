@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torchvision import models
-from attention_layers import (
+from utils.attention_layers import (
     SelfAttention,
     ChannelAttention
 )
@@ -32,7 +32,8 @@ def setup_device(
 
 def setup_fcn_model(
     model_name: str,
-    num_classes: int =3
+    num_classes: int =3, 
+
 ) -> nn.Module:
     # モデルのロード（事前学習済みのモデルをファインチューニング）
     model_dict = {
@@ -57,14 +58,22 @@ def tune_model(
         channel_attention_layer = ChannelAttention(2048)
         model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))  # num_classesに出力クラス数を設定
         model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
-        model.backbone.layer4.add_module("self_attention", attention_layer)
-        model.backbone.layer4.add_module("channel_attention", channel_attention_layer)
+        # model.backbone.layer4 = nn.Sequential(
+        #     channel_attention_layer,  # まずはChannelAttentionを適用
+        #     model.backbone.layer4,    # その後に既存のlayer4
+        #     attention_layer           # そしてSelfAttention
+        # )
     elif "resnet" in model_name:
-        attention_layer = SelfAttention(2048)  # layer4の出力チャンネル数は2048
-        channel_attention_layer = ChannelAttention(2048)  # layer4の出力チャンネル数は2048
+        # 注意層を初期化
+        attention_layer = SelfAttention(2048)
+        channel_attention_layer = ChannelAttention(2048)
         # ResNetの場合（512チャンネル）
         model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
-        # Self-Attentionをlayer4に追加
-        model.backbone.layer4.add_module("self_attention", attention_layer)
-        model.backbone.layer4.add_module("channel_attention", channel_attention_layer)
+        # Self-Attentionとchannel_atttentionをlayer4に追加
+        # layer4に注意層を追加する
+        model.backbone.layer4 = nn.Sequential(
+            channel_attention_layer,  # ChannelAttentionをまず適用
+            model.backbone.layer4,    # 次に既存のlayer4
+            attention_layer           # 最後にSelfAttentionを追加
+        )
     return model
