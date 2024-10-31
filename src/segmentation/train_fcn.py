@@ -265,7 +265,7 @@ def eval_dataset_and_save_images(
                     segment_save(seg_img_dir, org_img_dir / image_name, output_prediction)
             
             # 各クラスごとのIoUを計算
-            iou = calculate_priority_based_iou(preds, masks, class_num, priority)  # 5クラスの場合
+            iou = calculate_iou(preds, masks, class_num, priority)  # 5クラスの場合
             ious.append(iou)
 
     return running_loss / len(data_loader), ious
