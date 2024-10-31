@@ -61,3 +61,18 @@ def unnormalize(
     mean = torch.tensor(mean).view(3, 1, 1)
     std = torch.tensor(std).view(3, 1, 1)
     return tensor * std + mean
+
+def save_model_architecture(
+    model: torch.nn.Module, 
+    save_path: Path
+) -> None:
+    # モデルアーキテクチャを文字列化
+    model_str = str(model)
+
+    # ファイルに保存
+    save_path = save_path / "model_architecture.txt"
+    save_path.parent.mkdir(parents=True, exist_ok=True)  # ディレクトリが存在しない場合、作成する
+    with open(save_path, 'w') as f:
+        f.write(model_str)
+    
+    return

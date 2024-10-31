@@ -14,41 +14,49 @@ import numpy as np
 from sklearn.metrics import confusion_matrix
 from typing import Tuple, List
 
-
 sys.path.append("../")
 # 自作モジュール
+
+#データセット関連
 from segment_utils.dataset_utils import(
     transform,
     SegmentationDataset,
     split_dataset
-
 )
-
+# 画像処理関連
 from segment_utils.image_processing import(
     segment_save
 )
-
+# 評価関連
 from segment_utils.metrics import(
     save_iou_to_csv_from_conf_matrix,
     save_confusion_matrix_with_metrics
 )
-
-from segment_utils.visualization import(
-    visualize_random_sample_from_dataset
+# グラフ
+from segment_utils.graph import(
+    plot_and_save_learning_curve,
+    plot_and_save_iou_curve
 )
-
+# 確認用
+from segment_utils.misc import(
+    visualize_random_sample_from_dataset,
+    save_model_architecture
+)
+#モデル関連
 from utils.model_utils import (
     setup_fcn_model,
-    setup_device,
+    setup_device
+)
+#学習関連
+from utils.training_utils import (
     EarlyStopping
 )
+#seed値固定
 from utils.set_seed import (
     seed_everything
 )
 
 logger = logging.getLogger(__name__)
-
-
 
 def main(args):
     # 必要な変数の定義とディレクトリの作成
@@ -269,71 +277,6 @@ def eval_dataset_and_save_images(
             ious.append(iou)
 
     return running_loss / len(data_loader), ious
-
-# モデルアーキテクチャを保存する関数
-def save_model_architecture(
-    model: torch.nn.Module, 
-    save_path: Path
-) -> None:
-    # モデルアーキテクチャを文字列化
-    model_str = str(model)
-
-    # ファイルに保存
-    save_path = save_path / "model_architecture.txt"
-    save_path.parent.mkdir(parents=True, exist_ok=True)  # ディレクトリが存在しない場合、作成する
-    with open(save_path, 'w') as f:
-        f.write(model_str)
-    
-    return
-
-def plot_and_save_learning_curve(
-    epochs: int, 
-    train_losses: float, 
-    valid_losses: float, 
-    graph_save_dir: Path
-) -> None:
-    # プロットのリセット
-    plt.figure()  # 新しい図を作成
-    plt.clf()     # 既存の図をクリア
-    
-    # 学習曲線をプロット
-    plt.plot(range(1, epochs + 1), train_losses, label="Training")
-    plt.plot(range(1, epochs + 1), valid_losses, label="Validation")
-    
-    plt.xlabel("Epoch")
-    plt.ylabel("Cross Entropy Loss")
-    plt.title("Learnin Loss Curve")
-    plt.legend()
-    
-    # 学習曲線をファイルに保存
-    plt.savefig(graph_save_dir / Path("training_loss_curve.png"))
-
-def plot_and_save_iou_curve(
-    epochs: int,
-    epoch_ious: List[List[float]],  # 各クラスごとのIoU値
-    num_classes: int,               # クラス数
-    graph_save_dir: Path
-) -> None:
-    # IoU曲線のプロット
-    plt.figure()  # 新しい図を作成
-    plt.clf()     # 既存の図をクリア
-
-    # epoch_iousは [エポック数][クラス数] の形のリストを仮定
-    epoch_ious = torch.tensor(epoch_ious)  # 形を整えるためにテンソルに変換
-
-    # 各クラスごとにIoUの変化をプロット
-    for cls in range(num_classes):
-        plt.plot(range(1, epochs + 1), epoch_ious[:, cls], label=f'Class {cls} IoU')
-
-    plt.xlabel("Epoch")
-    plt.ylabel("IoU")
-    plt.title("IoU per Epoch for Each Class")
-    plt.legend()
-    plt.grid(True)
-
-    # IoU曲線をファイルに保存
-    plt.savefig(graph_save_dir / Path("iou_per_epoch_curve.png"))
-    plt.close()
 
 # IoUを計算する関数
 def calculate_iou(
