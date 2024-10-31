@@ -16,10 +16,16 @@ import matplotlib.pyplot as plt
 sys.path.append("../")
 # 自作モジュール
 from segmentation import (
-    transform, 
-    SegmentationDataset,
-    segment_save,
-    visualize_random_sample_from_dataset
+    transform,
+    segment_save
+)
+
+from segment_utils.image_processing import(
+    segment_save
+)
+
+from segment_utils.dataset_utils import(
+    transform,
 )
 
 from preprocessing.split_dataset import (

@@ -17,17 +17,24 @@ from typing import Tuple, List
 
 sys.path.append("../")
 # 自作モジュール
-from segmentation import (
-    transform, 
+from segment_utils.dataset_utils import(
+    transform,
     SegmentationDataset,
-    segment_save,
-    visualize_random_sample_from_dataset,
-    save_confusion_matrix_with_metrics,
-    save_iou_to_csv_from_conf_matrix
+    split_dataset
+
 )
 
-from preprocessing.split_dataset import (
-    split_dataset
+from segment_utils.image_processing import(
+    segment_save
+)
+
+from segment_utils.metrics import(
+    save_iou_to_csv_from_conf_matrix,
+    save_confusion_matrix_with_metrics
+)
+
+from segment_utils.visualization import(
+    visualize_random_sample_from_dataset
 )
 
 from utils.model_utils import (
@@ -48,7 +55,6 @@ def main(args):
     data_dir = args.data_dir
     mask_dir = args.mask_dir
     model_name = args.model_name
-    current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     save_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     epochs = args.epochs
     class_num = args.class_num
