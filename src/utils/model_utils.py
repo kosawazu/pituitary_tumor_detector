@@ -4,6 +4,10 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torchvision import models
+from attention_layers import (
+    SelfAttention,
+    ChannelAttention
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +38,6 @@ def setup_fcn_model(
     model_dict = {
     "fcn_resnet50":models.segmentation.fcn_resnet50(pretrained=True),
     "fcn_resnet101":models.segmentation.fcn_resnet101(pretrained=True),
-    "fcn_vgg16": models.vgg16(pretrained=True),
-    "fcn_vgg19": models.vgg19(pretrained=True),
     "deeplabv3_resnet101":models.segmentation.deeplabv3_resnet101(pretrained=True)
     }
     if model_name not in model_dict:
@@ -57,37 +59,3 @@ def tune_model(
     elif "resnet" in model_name:
         # ResNetの場合（512チャンネル）
         model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
-    elif "vgg" in model_name:
-        # VGGの特徴抽出部を取得
-        features = list(model.features.children())
-        
-        # VGGの全結合層部分を削除し、畳み込み層に置き換え
-        classifier = nn.Sequential(
-            nn.Conv2d(512, 4096, kernel_size=7),  # FCN部分の追加
-            nn.ReLU(inplace=True),
-            nn.Conv2d(4096, 4096, kernel_size=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(4096, num_classes, kernel_size=1)  # 出力層
-        )
-
-        # VGGモデルをセグメンテーションに適した形で再構築
-        model = nn.Sequential(
-            *features,
-            classifier
-        )
-
-        # 出力を辞書形式で返すように調整
-        class VGG_FCN(nn.Module):
-            def __init__(self, vgg_model):
-                super(VGG_FCN, self).__init__()
-                self.vgg_model = vgg_model
-
-            def forward(self, x):
-                # VGGモデルの出力をセグメンテーション形式に整える
-                x = self.vgg_model(x)
-                return {"out": x}  # 辞書形式で出力
-
-        # ラップして辞書形式で返すモデルに変換
-        model = VGG_FCN(model)
-
-    return model
