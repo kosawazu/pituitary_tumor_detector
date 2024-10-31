@@ -83,10 +83,9 @@ def main(args):
     if image is None or mask is None:
         logger.debug(f"Sample {sample_idx} has no valid data.")
     # データセットを指定した比率でtrain,val,testに分割をし、それぞれのデータローダーの作成
-    train_dataset, valid_dataset, test_dataset = split_dataset(dataset, output_dir=others_save_dir / "split_dataset")
+    train_dataset, valid_dataset, _ = split_dataset(dataset, output_dir=others_save_dir / "split_dataset")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=0)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
-    # test_loader = DataLoader(test_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
 
     # マスクのラベルが指定したクラス数に収まっているか確認する例
     mask = train_dataset[10][1]  # 0番目のサンプルのマスクを取得
@@ -337,14 +336,13 @@ def plot_and_save_iou_curve(
     plt.close()
 
 # IoUを計算する関数
-def calculate_priority_based_iou(
+def calculate_iou(
     pred: np.ndarray, 
     target: torch.Tensor, 
-    num_classes: int, 
-    priority: List[int]  # priorityはクラスIDなのでint型に修正
+    num_classes: int
 ) -> List[float]:
     """
-    優先度に基づくIoU計算。重複しているピクセルを優先度に基づいて適切に評価。
+    各クラスの通常のIoU計算。優先度に基づかないピクセルの評価。
     """
     # predがNumPy配列の場合、テンソルに変換
     pred = torch.tensor(pred)
@@ -365,18 +363,17 @@ def calculate_priority_based_iou(
         pred_inds = (pred == cls)
         target_inds = (target == cls)
         
-        # 優先順位に基づく調整
-        if cls in priority:
-            intersection = (pred_inds & target_inds).sum().float().item()
-            union = (pred_inds | target_inds).sum().float().item()
-            if union == 0:
-                ious.append(float('nan'))  # クラスが存在しなければNaNを追加
-            else:
-                ious.append(intersection / union)
-        else:
+        # IoU計算
+        intersection = (pred_inds & target_inds).sum().float().item()
+        union = (pred_inds | target_inds).sum().float().item()
+        
+        if union == 0:
             ious.append(float('nan'))  # クラスが存在しなければNaNを追加
+        else:
+            ious.append(intersection / union)
 
     return ious
+
 
 def save_metrics(model, test_loader, device, num_classes, class_names, save_path):
     model.eval()
