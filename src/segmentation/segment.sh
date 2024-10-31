@@ -4,6 +4,14 @@ batch_size_list=($3)  # リストとして展開
 learning_rate_list=($4)  # リストとして展開 
 patience="$5"
 
+# ログフォルダのパスを定義
+train_log_dir="../../logs/train"
+test_log_dir="../../logs/test"
+
+# ログフォルダが存在しない場合、作成
+mkdir -p "$train_log_dir"
+mkdir -p "$test_log_dir"
+
 # バッチサイズと学習率のリストをループで回す
 for batch_size in "${batch_size_list[@]}"; do
   for learning_rate in "${learning_rate_list[@]}"; do
@@ -18,11 +26,14 @@ for batch_size in "${batch_size_list[@]}"; do
       continue
     fi
 
-    # トレーニングの実行
-    python3 train_fcn.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience"
+    # ログファイル名を定義
+    log_file_name="${model_name}_${batch_size}_${learning_rate}.log"
 
-    # テストの実行
-    python3 test_fcn.py --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate"
+    # トレーニングの実行とログ出力
+    python3 train_fcn.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience" > "${train_log_dir}/${log_file_name}" 2>&1
+
+    # テストの実行とログ出力
+    python3 test_fcn.py --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" > "${test_log_dir}/${log_file_name}" 2>&1
   done
 done
 
