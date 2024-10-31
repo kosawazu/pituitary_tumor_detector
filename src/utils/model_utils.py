@@ -53,9 +53,18 @@ def tune_model(
 ) -> nn.Module:
     # クラス数を紙袋検出用に調整（背景+紙袋 = 2クラス）
     if model_name == "deeplabv3_resnet101":
-        logger.info("モデルです")
+        attention_layer = SelfAttention(2048)  # layer4の出力チャンネル数は2048
+        channel_attention_layer = ChannelAttention(2048)
         model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))  # num_classesに出力クラス数を設定
         model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
+        model.backbone.layer4.add_module("self_attention", attention_layer)
+        model.backbone.layer4.add_module("channel_attention", channel_attention_layer)
     elif "resnet" in model_name:
+        attention_layer = SelfAttention(2048)  # layer4の出力チャンネル数は2048
+        channel_attention_layer = ChannelAttention(2048)  # layer4の出力チャンネル数は2048
         # ResNetの場合（512チャンネル）
         model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
+        # Self-Attentionをlayer4に追加
+        model.backbone.layer4.add_module("self_attention", attention_layer)
+        model.backbone.layer4.add_module("channel_attention", channel_attention_layer)
+    return model
