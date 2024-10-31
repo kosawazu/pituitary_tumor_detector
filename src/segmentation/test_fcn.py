@@ -19,7 +19,6 @@ from segmentation import (
     transform, 
     segment_save,
     save_blended_image,
-    calculate_iou_from_confusion_matrix,
     save_confusion_matrix_with_metrics,
     save_iou_to_csv_from_conf_matrix
 )

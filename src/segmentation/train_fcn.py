@@ -60,9 +60,6 @@ def main(args):
     os.makedirs(model_save_dir, exist_ok=True)
     os.makedirs(graph_save_dir, exist_ok=True)
     os.makedirs(metrics_save_dir, exist_ok=True)
-
-    #モデルの学習の際にアノテーション重複時の優先度を決定する（値の対応はSegmentationDatasetを確認）
-    priority = [4, 3, 2, 1, 0]
     class_names = ['background', 'sellar', 'sella', 'pituitary', 'tumor']
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
 
@@ -104,7 +101,7 @@ def main(args):
     early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
 
     #モデルの学習と学習曲線の出力
-    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, priority, class_names, train_image_dir, graph_save_dir, model_save_dir, metrics_save_dir)
+    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, class_names, train_image_dir, graph_save_dir, model_save_dir, metrics_save_dir)
 
     return
 
@@ -132,7 +129,6 @@ def train_model(
     epochs: int,
     early_stopping: EarlyStopping,
     class_num: int,
-    priority: List[int],
     class_names: List[str],
     data_dir: Path,
     graph_save_dir: Path,
@@ -157,7 +153,6 @@ def train_model(
             model, 
             criterion,
             class_num,
-            priority,
             graph_save_dir / f"epoch_{epoch+1}",
             data_dir
             )
@@ -230,7 +225,6 @@ def eval_dataset_and_save_images(
     model: nn.Module,           
     criterion: nn.Module,   
     class_num: int, 
-    priority: List[int],
     seg_img_dir: Path = None,
     org_img_dir: Path = None
 ) -> float :
@@ -265,7 +259,7 @@ def eval_dataset_and_save_images(
                     segment_save(seg_img_dir, org_img_dir / image_name, output_prediction)
             
             # 各クラスごとのIoUを計算
-            iou = calculate_iou(preds, masks, class_num, priority)  # 5クラスの場合
+            iou = calculate_iou(preds, masks, class_num)  # 5クラスの場合
             ious.append(iou)
 
     return running_loss / len(data_loader), ious

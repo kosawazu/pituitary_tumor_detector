@@ -1,8 +1,10 @@
 from sklearn.model_selection import train_test_split
 from pathlib import Path
 import torch
+from torch.utils.data import Dataset, Subset
+from typing import Tuple
 
-class SubsetWithAttributes(torch.utils.data.Subset):
+class SubsetWithAttributes(Subset):
     def __getattr__(self, attr):
         return getattr(self.dataset, attr)
 
@@ -20,7 +22,13 @@ def save_filenames(dataset, indices, filepath):
         for filename in filenames:
             f.write(f"{filename}\n")
 
-def split_dataset(dataset, train_val_ratio=0.1, test_size=10, random_seed=42, output_dir=Path('./')):
+def split_dataset(
+    dataset: Dataset, 
+    train_val_ratio: float =0.1, 
+    test_size: int =10, 
+    random_seed: int =42, 
+    output_dir: Path =Path('./')
+) -> Tuple[Dataset, Dataset, Dataset]:
     """
     データセットを訓練、検証、テスト用に分割し、各データセットに含まれるファイル名をテキストファイルで保存する関数
     Args:

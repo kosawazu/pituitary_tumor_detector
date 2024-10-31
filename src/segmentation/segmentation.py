@@ -9,9 +9,10 @@ from PIL import Image, ImageDraw
 import json
 import matplotlib.pyplot as plt
 import csv
-from typing import Union, List
+from torch.utils.data import Dataset
+from typing import List
 
-# fcn_resnet50用
+# fcn_resnet用
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -26,7 +27,12 @@ colors = {
             4: (128, 0, 128)     # tumor - 紫
         }
 class SegmentationDataset(torch.utils.data.Dataset):
-    def __init__(self, annotation_dir: Path, image_dir: Path, transform=None):
+    def __init__(
+        self, 
+        annotation_dir: Path, 
+        image_dir: Path, 
+        transform=None
+    ):
         """
         Args:
             annotation_dir (Path): アノテーションファイルが含まれるディレクトリ
@@ -112,30 +118,26 @@ class SegmentationDataset(torch.utils.data.Dataset):
                     return t.mean, t.std
         return None, None  # Normalizeが見つからない場合
 
-def segment_save(graph_save_dir, image_path, output_predictions):
+def segment_save(
+    graph_save_dir: Path, 
+    image_path: Path, 
+    output_predictions: np.ndarray
+) -> None:
     # 元画像の読み込み
     img = Image.open(image_path).convert('RGB')
 
-    # output_predictions がPyTorchテンソルの場合、NumPy配列に変換
-    if isinstance(output_predictions, torch.Tensor):
-        output_predictions = output_predictions.squeeze().byte().cpu().numpy()
+    # ここでデータ型と形状を変換
+    # uint8に変換して、0-255の範囲にスケールする
+    if output_predictions.dtype != np.uint8:
+        output_predictions = output_predictions.astype(np.uint8)
 
-    # output_predictions が NumPy配列の場合
-    if isinstance(output_predictions, np.ndarray):
-        # ここでデータ型と形状を変換
-        # uint8に変換して、0-255の範囲にスケールする
-        if output_predictions.dtype != np.uint8:
-            output_predictions = output_predictions.astype(np.uint8)
-        
-        # カラーマッピングの設定（背景: 青, 紙袋: 緑, 傷: 赤, クラス4: 黄, クラス5: 紫）
+    # カラーマップに基づいて output_predictions を色付け
+    output_colored = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
+    for class_index, color in colors.items():
+        output_colored[output_predictions == class_index] = color
 
-        # カラーマップに基づいて output_predictions を色付け
-        output_colored = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
-        for class_index, color in colors.items():
-            output_colored[output_predictions == class_index] = color
-
-        # PIL画像に変換
-        output_image = Image.fromarray(output_colored)
+    # PIL画像に変換
+    output_image = Image.fromarray(output_colored)
 
     # セグメンテーション結果のサイズを元画像に合わせる
     output_image_resized = output_image.resize(img.size, resample=Image.NEAREST)
@@ -158,7 +160,12 @@ def segment_save(graph_save_dir, image_path, output_predictions):
     plt.savefig(f'{save_path}_comparison.png', bbox_inches=None, pad_inches=0.1)  # 保存
     plt.close()  # メモリを節約するためにプロットを閉じる
 
-def save_blended_image(save_dir, original_image_path, output_predictions, alpha=0.5):
+def save_blended_image(
+    save_dir: Path, 
+    original_image_path: Path, 
+    output_predictions: np.ndarray, 
+    alpha: float =0.5
+) -> None:
     """
     元画像とセグメンテーション結果を重ね合わせ、指定された保存先に保存する関数。
 
@@ -195,7 +202,10 @@ def save_blended_image(save_dir, original_image_path, output_predictions, alpha=
 
     print(f"Blended image saved to {save_path}")
 
-def calculate_iou_from_confusion_matrix(conf_matrix, num_classes):
+def calculate_iou_from_confusion_matrix(
+    conf_matrix: np.ndarray, 
+    num_classes: int
+) -> List[float]:
     """
     混同行列から各クラスのIoUを計算する関数。
 
@@ -227,7 +237,7 @@ def save_iou_to_csv_from_conf_matrix(
     conf_matrix: np.ndarray, 
     class_names: list, 
     save_path: Path, 
-    num_classes: int = 5
+    num_classes: int
 ) -> None:
     """
     混同行列から計算したIoUをCSVに保存し、最後にmIoUを記載する関数。
@@ -269,7 +279,11 @@ def save_iou_to_csv_from_conf_matrix(
 
 
 # 混同行列を表示するためのCSV出力用関数
-def save_confusion_matrix_with_metrics(conf_matrix, save_path, class_names):
+def save_confusion_matrix_with_metrics(
+    conf_matrix: np.ndarray, 
+    save_path: Path, 
+    class_names: int
+) -> None:
     # 保存するファイルのパスを設定
     confusion_matrix_file = save_path / "confusion_matrix_with_metrics.csv"
     num_classes = len(class_names)
@@ -319,7 +333,10 @@ def save_confusion_matrix_with_metrics(conf_matrix, save_path, class_names):
     print(f"Confusion matrix with metrics saved to: {confusion_matrix_file}")
 
 # ランダムにデータセットから1つのデータを抽出して、グラフを作成する関数を定義します
-def visualize_random_sample_from_dataset(dataset, save_path: Path):
+def visualize_random_sample_from_dataset(
+    dataset: Dataset, 
+    save_path: Path
+) -> None:
     # ランダムに1つのインデックスを選択
     idx = random.randint(0, len(dataset) - 1)
     
@@ -362,7 +379,11 @@ def visualize_random_sample_from_dataset(dataset, save_path: Path):
     plt.close(fig)
 
 # 正規化を元に戻すための関数
-def unnormalize(tensor, mean, std):
+def unnormalize(
+    tensor: torch.Tensor, 
+    mean: List[float], 
+    std: List[float]
+) -> torch.Tensor:
     mean = torch.tensor(mean).view(3, 1, 1)
     std = torch.tensor(std).view(3, 1, 1)
     return tensor * std + mean
