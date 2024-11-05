@@ -57,11 +57,11 @@ def tune_model(
         channel_attention_layer = ChannelAttention(2048)
         model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))  # num_classesに出力クラス数を設定
         model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
-        # model.backbone.layer4 = nn.Sequential(
-        #     channel_attention_layer,  # まずはChannelAttentionを適用
-        #     model.backbone.layer4,    # その後に既存のlayer4
-        #     attention_layer           # そしてSelfAttention
-        # )
+        model.backbone.layer4 = nn.Sequential(
+            # channel_attention_layer,  # まずはChannelAttentionを適用
+            model.backbone.layer4,    # その後に既存のlayer4
+            attention_layer           # そしてSelfAttention
+        )
     elif "resnet" in model_name:
         # 注意層を初期化
         attention_layer = SelfAttention(2048)
@@ -73,6 +73,6 @@ def tune_model(
         model.backbone.layer4 = nn.Sequential(
             # channel_attention_layer,  # ChannelAttentionをまず適用
             model.backbone.layer4,    # 次に既存のlayer4
-            #attention_layer           # 最後にSelfAttentionを追加
+            attention_layer           # 最後にSelfAttentionを追加
         )
     return model
