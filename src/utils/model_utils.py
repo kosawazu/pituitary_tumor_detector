@@ -60,7 +60,7 @@ def tune_model(
         model.backbone.layer4 = nn.Sequential(
             # channel_attention_layer,  # まずはChannelAttentionを適用
             model.backbone.layer4,    # その後に既存のlayer4
-            attention_layer           # そしてSelfAttention
+            # attention_layer           # そしてSelfAttention
         )
     elif "resnet" in model_name:
         # 注意層を初期化
@@ -73,6 +73,6 @@ def tune_model(
         model.backbone.layer4 = nn.Sequential(
             # channel_attention_layer,  # ChannelAttentionをまず適用
             model.backbone.layer4,    # 次に既存のlayer4
-            attention_layer           # 最後にSelfAttentionを追加
+            # attention_layer           # 最後にSelfAttentionを追加
         )
     return model
