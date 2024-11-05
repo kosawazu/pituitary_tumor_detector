@@ -31,6 +31,12 @@ for batch_size in "${batch_size_list[@]}"; do
 
     # トレーニングの実行とログ出力
     python3 train_fcn.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience" > "${train_log_dir}/${log_file_name}" 2>&1
+    
+    # トレーニングが正常に終了したかをチェック
+    if [ $? -ne 0 ]; then
+      echo "トレーニング中にエラーが発生しました。次のバッチサイズと学習率の組み合わせに進みます。"
+      continue  # エラーが発生した場合、次のループに進む
+    fi
 
     # テストの実行とログ出力
     python3 test_fcn.py --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" > "${test_log_dir}/${log_file_name}" 2>&1
