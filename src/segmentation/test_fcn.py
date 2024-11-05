@@ -104,7 +104,7 @@ def main(args):
 
 def get_test_image_name(
     txt_file_path: Path
-):
+) -> List[str]:
     # ファイル名を格納するリスト
     file_names_list = []
 
