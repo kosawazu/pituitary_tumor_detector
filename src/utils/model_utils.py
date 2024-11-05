@@ -73,6 +73,6 @@ def tune_model(
         model.backbone.layer4 = nn.Sequential(
             # channel_attention_layer,  # ChannelAttentionをまず適用
             model.backbone.layer4,    # 次に既存のlayer4
-            attention_layer           # 最後にSelfAttentionを追加
+            #attention_layer           # 最後にSelfAttentionを追加
         )
     return model
