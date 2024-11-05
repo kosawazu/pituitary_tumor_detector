@@ -33,7 +33,6 @@ def setup_device(
 def setup_fcn_model(
     model_name: str,
     num_classes: int =3, 
-
 ) -> nn.Module:
     # モデルのロード（事前学習済みのモデルをファインチューニング）
     model_dict = {
@@ -72,7 +71,7 @@ def tune_model(
         # Self-Attentionとchannel_atttentionをlayer4に追加
         # layer4に注意層を追加する
         model.backbone.layer4 = nn.Sequential(
-            channel_attention_layer,  # ChannelAttentionをまず適用
+            # channel_attention_layer,  # ChannelAttentionをまず適用
             model.backbone.layer4,    # 次に既存のlayer4
             attention_layer           # 最後にSelfAttentionを追加
         )
