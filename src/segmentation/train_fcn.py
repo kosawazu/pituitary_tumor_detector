@@ -402,6 +402,10 @@ def parse_args():
                         default=5,
                         help='分類するクラス数'
                         )
+    parser.add_argument('-self_attention', 
+                        action='store_true', 
+                        help='self_attentionを使用するかのモードです'
+                        )
     parser.add_argument("--seed",
                         type=float,
                         default=42
