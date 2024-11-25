@@ -319,7 +319,14 @@ def calculate_iou(
     return ious
 
 
-def save_metrics(model, test_loader, device, num_classes, class_names, save_path):
+def save_metrics(
+    model: nn.Module,        
+    test_loader: DataLoader, 
+    device: torch.device, 
+    num_classes: int, 
+    class_names: List[str], 
+    save_path: Path
+):
     model.eval()
     all_predictions = []
     all_ground_truths = []
