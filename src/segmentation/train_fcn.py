@@ -66,6 +66,7 @@ def main(args):
     save_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     epochs = args.epochs
     class_num = args.class_num
+    attention_mode = args.attention_mode
     train_image_dir = data_dir / Path("img")
     model_save_dir = save_dir / Path( "model")
     graph_save_dir = save_dir / Path("graph")
@@ -78,7 +79,7 @@ def main(args):
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
 
     # COCOデータセットで事前学習されたモデルをロード
-    model = setup_fcn_model(model_name, num_classes=class_num)
+    model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model)
 
@@ -402,9 +403,11 @@ def parse_args():
                         default=5,
                         help='分類するクラス数'
                         )
-    parser.add_argument('-self_attention', 
-                        action='store_true', 
-                        help='self_attentionを使用するかのモードです'
+    parser.add_argument('--attention_mode', 
+                        type=str,
+                        default="none",
+                        choices=["none", "self_attention", "channel_attention", "both"],
+                        help='attention_layerの使用するかを指定する変数'
                         )
     parser.add_argument("--seed",
                         type=float,

@@ -41,6 +41,7 @@ def main(args):
     data_dir = args.data_dir 
     class_num = args.class_num
     model_name = args.model_name
+    attention_mode = args.attention_mode
     model_data_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     test_text_file_path = model_data_dir / Path(f"others/split_dataset/test_filenames.txt")
     segment_save_dir = model_data_dir / Path("test", "segment_image")
@@ -57,7 +58,7 @@ def main(args):
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
     logger.info(model_path)
-    model = setup_fcn_model(model_name, num_classes=class_num)
+    model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model, model_path=model_path,)
 
@@ -222,6 +223,12 @@ def parse_args():
                         type=int,
                         default=5,
                         help='分類するクラス数'
+                        )
+    parser.add_argument('--attention_mode', 
+                        type=str,
+                        default="none",
+                        choices=["none", "self_attention", "channel_attention", "both"],
+                        help='attention_layerの使用するかを指定する変数'
                         )
     parser.add_argument(
                         '--loglevel',
