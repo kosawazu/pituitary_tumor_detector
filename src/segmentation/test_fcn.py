@@ -22,7 +22,8 @@ from segment_utils.dataset_utils import(
 
 from segment_utils.image_processing import(
     segment_save,
-    save_blended_image
+    save_blended_image,
+    save_blended_image_with_class4_gradient
 )
 
 from segment_utils.metrics import(
@@ -42,22 +43,24 @@ def main(args):
     class_num = args.class_num
     model_name = args.model_name
     attention_mode = args.attention_mode
-    model_data_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
+    model_data_dir = args.save_dir / Path("nagoya", "training_results", "no_add_attention", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     test_text_file_path = model_data_dir / Path(f"others/split_dataset/test_filenames.txt")
     segment_save_dir = model_data_dir / Path("test", "segment_image")
     blended_segment_save_dir = model_data_dir / Path("test", "blend_image")
     metrics_segment_save_dir = model_data_dir / Path("test", "metrics")
+    gradation_segment_save_dir = model_data_dir / Path("test", "blend_gradation_image")
     model_path = model_data_dir / Path("model", "best_model_segment.pth")
     file_names_list = get_test_image_name(test_text_file_path)
     test_image_paths, test_true_labels = get_test_image_paths_and_labels(file_names_list, data_dir)
     os.makedirs(segment_save_dir, exist_ok=True)
     os.makedirs(blended_segment_save_dir, exist_ok=True)
     os.makedirs(metrics_segment_save_dir, exist_ok=True)
+    os.makedirs(gradation_segment_save_dir, exist_ok=True)
     class_names = ['background', 'sellar', 'sella', 'pituitary', 'tumor']
     num_classes = len(class_names)
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
-    logger.info(model_path)
+    logger.info(f"{model_path}を読み込みます")
     model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model, model_path=model_path,)
@@ -88,6 +91,7 @@ def main(args):
         #セグメントした画像を保存
         segment_save(segment_save_dir, test_image_path, output_predictions)
         save_blended_image(blended_segment_save_dir, test_image_path, output_predictions)
+        save_blended_image_with_class4_gradient(gradation_segment_save_dir, test_image_path, output)
 
 
     # すべての画像の正解ラベルと予測ラベルをまとめる
@@ -209,7 +213,9 @@ def parse_args():
                         )  
     parser.add_argument("--model_name",
                         type=str,
-                        default="fcn_resnet50"
+                        default="fcn_resnet50",
+                        choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19", "deeplabv3_resnet101"],
+                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19, deeplabv3_resnet101."
                         )
     parser.add_argument("--batch_size",
                         type=int,

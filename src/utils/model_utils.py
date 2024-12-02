@@ -51,23 +51,24 @@ def tune_model(
     model: nn.Module,
     model_name: str,
     attention_mode: str,
-    num_classes: int =3
+    num_classes: int = 3
 ) -> nn.Module:
     self_attention = SelfAttention(2048)  # layer4の出力チャンネル数は2048
     channel_attention = ChannelAttention(2048)
+
     if model_name == "deeplabv3_resnet101":
-        model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))  # num_classesに出力クラス数を設定
+        model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
         model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
     elif "resnet" in model_name:
-        # ResNetの場合（512チャンネル）
         model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
+    else:
+        raise ValueError(f"Unsupported model: {model_name}")
+
     # アテンションモードに基づいてbackbone.layer4を設定
     original_layer4 = model.backbone.layer4
-    # Self-Attentionとchannel_atttentionをlayer4に追加
-    # layer4に注意層を追加する
+
     if attention_mode == "none":
-        # アテンションを適用しない
-        pass
+        model.backbone.layer4 = nn.Sequential(original_layer4)
     elif attention_mode == "self_attention":
         model.backbone.layer4 = nn.Sequential(original_layer4, self_attention)
     elif attention_mode == "channel_attention":
@@ -76,4 +77,37 @@ def tune_model(
         model.backbone.layer4 = nn.Sequential(channel_attention, original_layer4, self_attention)
     else:
         raise ValueError(f"Invalid attention mode: {attention_mode}")
+
     return model
+
+# def tune_model(
+#     model: nn.Module,
+#     model_name: str,
+#     attention_mode: str,
+#     num_classes: int
+# ) -> nn.Module:
+#     # クラス数を紙袋検出用に調整（背景+紙袋 = 2クラス）
+#     if model_name == "deeplabv3_resnet101":
+#         attention_layer = SelfAttention(2048)  # layer4の出力チャンネル数は2048
+#         channel_attention_layer = ChannelAttention(2048)
+#         model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))  # num_classesに出力クラス数を設定
+#         model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
+#         model.backbone.layer4 = nn.Sequential(
+#             # channel_attention_layer,  # まずはChannelAttentionを適用
+#             model.backbone.layer4,    # その後に既存のlayer4
+#             # attention_layer           # そしてSelfAttention
+#         )
+#     elif "resnet" in model_name:
+#         # 注意層を初期化
+#         attention_layer = SelfAttention(2048)
+#         channel_attention_layer = ChannelAttention(2048)
+#         # ResNetの場合（512チャンネル）
+#         model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
+#         # Self-Attentionとchannel_atttentionをlayer4に追加
+#         # layer4に注意層を追加する
+#         model.backbone.layer4 = nn.Sequential(
+#             # channel_attention_layer,  # ChannelAttentionをまず適用
+#             model.backbone.layer4,    # 次に既存のlayer4
+#             # attention_layer           # 最後にSelfAttentionを追加
+#         )
+#     return model

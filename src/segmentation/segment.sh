@@ -45,6 +45,7 @@ for batch_size in "${batch_size_list[@]}"; do
       echo "トレーニング中にエラーが発生しました。次のバッチサイズと学習率の組み合わせに進みます。"
       continue  # エラーが発生した場合、次のループに進む
     fi
+
     # テストの実行とログ出力
     python3 test_fcn.py --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --attention_mode $attention_mode > "${test_log_dir}/${log_file_name}" 2>&1
   done
