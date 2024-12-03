@@ -82,7 +82,7 @@ def save_iou_to_csv_from_conf_matrix(
 def save_confusion_matrix_with_metrics(
     conf_matrix: np.ndarray, 
     save_path: Path, 
-    class_names: int
+    class_names: List[str]
 ) -> None:
     # 保存するファイルのパスを設定
     confusion_matrix_file = save_path / "confusion_matrix_with_metrics.csv"

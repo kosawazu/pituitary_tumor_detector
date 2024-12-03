@@ -43,13 +43,15 @@ def main(args):
     class_num = args.class_num
     model_name = args.model_name
     attention_mode = args.attention_mode
-    model_data_dir = args.save_dir / Path("nagoya", "training_results", "no_add_attention", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
+    model_file = args.save_model_file
+    model_data_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     test_text_file_path = model_data_dir / Path(f"others/split_dataset/test_filenames.txt")
-    segment_save_dir = model_data_dir / Path("test", "segment_image")
-    blended_segment_save_dir = model_data_dir / Path("test", "blend_image")
-    metrics_segment_save_dir = model_data_dir / Path("test", "metrics")
-    gradation_segment_save_dir = model_data_dir / Path("test", "blend_gradation_image")
-    model_path = model_data_dir / Path("model", "best_model_segment.pth")
+    test_result_dir = model_data_dir / Path("test", model_file)
+    segment_save_dir = test_result_dir / Path("segment_image")
+    blended_segment_save_dir = test_result_dir / Path("blend_image")
+    metrics_segment_save_dir = test_result_dir / Path("metrics")
+    gradation_segment_save_dir = test_result_dir / Path("blend_gradation_image")
+    model_path = model_data_dir / Path("model", f"{model_file}.pth")
     file_names_list = get_test_image_name(test_text_file_path)
     test_image_paths, test_true_labels = get_test_image_paths_and_labels(file_names_list, data_dir)
     os.makedirs(segment_save_dir, exist_ok=True)
@@ -217,6 +219,10 @@ def parse_args():
                         choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19", "deeplabv3_resnet101"],
                         help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19, deeplabv3_resnet101."
                         )
+    parser.add_argument("--save_model_file",
+                        type=str,
+                        help='保存したモデルのファイル名'
+                        ) 
     parser.add_argument("--batch_size",
                         type=int,
                         default=20

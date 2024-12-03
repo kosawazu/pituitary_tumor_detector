@@ -13,6 +13,7 @@ learning_rate_list=($4)  # リストとして展開
 patience="$5"
 attention_mode="$6"
 
+model_files=("best_loss_model" "best_tumor_iou_model" "best_mean_iou_model")
 # ログフォルダのパスを定義
 train_log_dir="../../logs/train"
 test_log_dir="../../logs/test"
@@ -28,7 +29,6 @@ for batch_size in "${batch_size_list[@]}"; do
 
     # フォルダのパスを定義
     result_folder="../../result/nagoya/training_results/${model_name}/${batch_size}/${learning_rate}"
-
     # フォルダが存在する場合はスキップ
     if [ -d "$result_folder" ]; then
       echo "フォルダ $result_folder が既に存在します。次の処理に進みます。"
@@ -46,8 +46,10 @@ for batch_size in "${batch_size_list[@]}"; do
       continue  # エラーが発生した場合、次のループに進む
     fi
 
-    # テストの実行とログ出力
-    python3 test_fcn.py --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --attention_mode $attention_mode > "${test_log_dir}/${log_file_name}" 2>&1
+    for model_file in "${model_files[@]}"; do
+      # テストの実行とログ出力
+      python3 test_fcn.py --model_name "$model_name" --save_model_file "$model_file" --batch_size "$batch_size" --learning_rate "$learning_rate" --attention_mode $attention_mode > "${test_log_dir}/${log_file_name}" 2>&1
+    done
   done
 done
 

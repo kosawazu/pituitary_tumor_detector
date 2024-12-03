@@ -12,7 +12,7 @@ import sys
 import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import confusion_matrix
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 
 sys.path.append("../")
 # 自作モジュール
@@ -21,7 +21,8 @@ sys.path.append("../")
 from segment_utils.dataset_utils import(
     transform,
     SegmentationDataset,
-    split_dataset
+    split_dataset,
+    CLASS_MAPPING
 )
 # 画像処理関連
 from segment_utils.image_processing import(
@@ -120,19 +121,45 @@ def main(args):
 
     return
 
-def save_best_model(
+def save_best_model(model, metric, best_metric, model_dir, file_name, is_higher_better):
+    """
+    最良のモデルを保存する
+    """
+    should_save = False
+
+    if is_higher_better:
+        if metric >= best_metric:
+            should_save = True
+    else:
+        if metric <= best_metric:
+            should_save = True
+
+    if should_save:
+        best_metric = metric
+        file_path = os.path.join(model_dir, file_name)
+        torch.save(model.state_dict(), file_path)
+        logger.info(f"モデルを保存しました: {file_path=} （{metric=}, {best_metric=}）")
+    else:
+        logger.info(f"モデルは保存されませんでした。現行の最良値を維持します。 （{metric=}, {best_metric=})")
+
+    return best_metric
+
+def save_best_models(
     model: nn.Module, 
-    epoch: int, 
-    epoch_loss: float, 
-    best_loss: float, 
-    model_save_dir: Path
-) -> float:
-    if epoch_loss < best_loss:
-        best_loss = epoch_loss
-        model_save_path = model_save_dir / Path("best_model_segment.pth")
-        torch.save(model.state_dict(), model_save_path)
-        logger.info(f"Best model saved with loss {best_loss:.4f} at epoch {epoch+1}")
-    return best_loss
+    metrics: Dict[str, float], 
+    best_metrics: Dict[str, float], 
+    model_dir: str
+) -> Dict[str, float]:
+    for metric_name, is_higher_better in [("loss", False), ("tumor_iou", True), ("mean_iou", True)]:
+        best_metrics[metric_name] = save_best_model(
+            model, 
+            metrics[metric_name], 
+            best_metrics[metric_name], 
+            model_dir, 
+            f'best_{metric_name}_model.pth', 
+            is_higher_better
+        )
+    return best_metrics
 
 def train_model(
     train_loader: DataLoader,   
@@ -156,7 +183,7 @@ def train_model(
     train_losses = []
     valid_losses = []
     epoch_ious = []
-    best_loss = float('inf')  
+    best_metrics = {"loss": float('inf'), "tumor_iou": 0.0, "mean_iou": 0.0}
     for epoch in range(epochs):
         # 各エポックの損失をリストに追加
         epoch_loss = one_epoch_train(train_loader, device, optimizer, model, criterion, epoch, epochs)
@@ -170,16 +197,22 @@ def train_model(
             class_num,
             graph_save_dir / f"epoch_{epoch+1}",
             data_dir
-            )
+            )                     
 
         # 最良モデルの保存
-        best_loss = save_best_model(model, epoch, val_loss, best_loss, model_save_dir)
-
+        index_mapping = {v: k for k, v in CLASS_MAPPING.items()}
+        tumor_index = index_mapping["tumor"]
+        tumor_ious_score = ious[tumor_index]
+        mean_iou = torch.tensor(ious).mean(dim=0).tolist()  # クラスごとの平均
+        evaluation_metrics  = {
+                    "loss": val_loss,
+                    "tumor_iou": tumor_ious_score,
+                    "mean_iou": mean_iou
+        }         
+        best_metrics = save_best_models(model, evaluation_metrics, best_metrics, model_save_dir)
         train_losses.append(epoch_loss)
         valid_losses.append(val_loss)
-        
-        mean_iou = torch.tensor(ious).mean(dim=0).tolist()  # クラスごとの平均
-        epoch_ious.append(mean_iou)
+        epoch_ious.append(ious)
         # logger.info(f'Epoch [{epoch+1}/{epochs}] | Loss: Train {epoch_loss}, Validation {val_loss}\n')
 
         # 学習曲線をプロット
@@ -242,7 +275,7 @@ def eval_dataset_and_save_images(
     class_num: int, 
     seg_img_dir: Path = None,
     org_img_dir: Path = None
-) -> float :
+) -> Tuple[float, List[float]] :
     if seg_img_dir is not None:
         seg_img_dir.mkdir(parents=True, exist_ok=True)
 
@@ -275,8 +308,11 @@ def eval_dataset_and_save_images(
             
             # 各クラスごとのIoUを計算
             iou = calculate_iou(preds, masks, class_num)  # 5クラスの場合
-            ious.append(iou)
-
+            if not ious:  # iousが空の場合
+                ious = iou.copy()  # 最初のリストをそのまま代入
+            else:
+                ious = [x + y for x, y in zip(ious, iou)]  # 要素ごとに加算
+        ious = [iou / len(data_loader) for iou in ious]
     return running_loss / len(data_loader), ious
 
 # IoUを計算する関数

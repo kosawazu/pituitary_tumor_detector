@@ -14,6 +14,14 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
+CLASS_MAPPING = {
+    0: "background",
+    1: "sellar",
+    2: "sella",
+    3: "pituitary",
+    4: "tumor",
+}
+
 
 class SegmentationDataset(Dataset):
     def __init__(
