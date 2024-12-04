@@ -121,7 +121,23 @@ def main(args):
 
     return
 
-def save_best_model(model, metric, best_metric, model_dir, file_name, is_higher_better):
+def save_epoch_info(model_dir: str, metric_name: str, epoch: int):
+    """エポック情報をテキストファイルに保存する"""
+    file_path = os.path.join(model_dir, f'best_{metric_name}_epoch.txt')
+    with open(file_path, 'w') as f:
+        f.write(f"Best {metric_name} model saved at epoch: {epoch + 1}")
+    logger.info(f"エポック情報を保存しました: {file_path}")
+
+
+def save_best_model(
+    epoch: int,
+    model: nn.Module, 
+    metric: Dict[str, float], 
+    best_metric: float, 
+    model_dir: Path, 
+    file_name: Path, 
+    is_higher_better: bool
+) -> float:
     """
     最良のモデルを保存する
     """
@@ -138,6 +154,8 @@ def save_best_model(model, metric, best_metric, model_dir, file_name, is_higher_
         best_metric = metric
         file_path = os.path.join(model_dir, file_name)
         torch.save(model.state_dict(), file_path)
+        metric_name = file_name.split('_')[1]  # 'best_loss_model.pth' から 'loss' を抽出
+        save_epoch_info(model_dir, metric_name, epoch)
         logger.info(f"モデルを保存しました: {file_path=} （{metric=}, {best_metric=}）")
     else:
         logger.info(f"モデルは保存されませんでした。現行の最良値を維持します。 （{metric=}, {best_metric=})")
@@ -145,6 +163,7 @@ def save_best_model(model, metric, best_metric, model_dir, file_name, is_higher_
     return best_metric
 
 def save_best_models(
+    epoch: int,  
     model: nn.Module, 
     metrics: Dict[str, float], 
     best_metrics: Dict[str, float], 
@@ -152,6 +171,7 @@ def save_best_models(
 ) -> Dict[str, float]:
     for metric_name, is_higher_better in [("loss", False), ("tumor_iou", True), ("mean_iou", True)]:
         best_metrics[metric_name] = save_best_model(
+            epoch,
             model, 
             metrics[metric_name], 
             best_metrics[metric_name], 
@@ -209,7 +229,7 @@ def train_model(
                     "tumor_iou": tumor_ious_score,
                     "mean_iou": mean_iou
         }         
-        best_metrics = save_best_models(model, evaluation_metrics, best_metrics, model_save_dir)
+        best_metrics = save_best_models(epoch, model, evaluation_metrics, best_metrics, model_save_dir)
         train_losses.append(epoch_loss)
         valid_losses.append(val_loss)
         epoch_ious.append(ious)
