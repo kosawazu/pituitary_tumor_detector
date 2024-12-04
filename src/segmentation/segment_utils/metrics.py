@@ -1,6 +1,8 @@
 from pathlib import Path
 import numpy as np
 import csv
+import torch
+import torch.nn.functional as F
 from typing import List
 
 def calculate_iou_from_confusion_matrix(
@@ -130,3 +132,41 @@ def save_confusion_matrix_with_metrics(
         writer.writerow([''] * 6 + [round(total_accuracy, 3)])
 
     print(f"Confusion matrix with metrics saved to: {confusion_matrix_file}")
+
+def calculate_iou(
+    pred: np.ndarray, 
+    target: torch.Tensor, 
+    num_classes: int
+) -> List[float]:
+    """
+    各クラスの通常のIoU計算。優先度に基づかないピクセルの評価。
+    """
+    # predがNumPy配列の場合、テンソルに変換
+    pred = torch.tensor(pred)
+
+    # predをtargetと同じデバイスに移動
+    pred = pred.to(target.device)
+
+    # predの形状がtargetと異なる場合、リサイズ
+    if pred.shape != target.shape:
+        pred = F.interpolate(pred.unsqueeze(0).float(), size=target.shape[-2:], mode='nearest').squeeze(0)
+
+    # predとtargetの形状を1次元に変換
+    pred = pred.view(-1)
+    target = target.view(-1)
+
+    ious = []
+    for cls in range(num_classes):
+        pred_inds = (pred == cls)
+        target_inds = (target == cls)
+        
+        # IoU計算
+        intersection = (pred_inds & target_inds).sum().float().item()
+        union = (pred_inds | target_inds).sum().float().item()
+        
+        if union == 0:
+            ious.append(float('nan'))  # クラスが存在しなければNaNを追加
+        else:
+            ious.append(intersection / union)
+
+    return ious
