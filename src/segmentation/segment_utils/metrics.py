@@ -52,7 +52,6 @@ def save_iou_to_csv_from_conf_matrix(
     """
     # IoUを計算
     iou_per_class = calculate_iou_from_confusion_matrix(conf_matrix, num_classes)
-
     # mIoU (mean IoU) を計算
     valid_ious = [iou for iou in iou_per_class if not np.isnan(iou)]  # 有効なIoUのみ
     miou = np.mean(valid_ious) if valid_ious else float('nan')
