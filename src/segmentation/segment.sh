@@ -13,7 +13,7 @@ learning_rate_list=($4)  # リストとして展開
 patience="$5"
 attention_mode="$6"
 
-# model_files=("best_loss_model" "best_tumor_iou_model" "best_mean_iou_model")
+model_files=("best_loss_model" "best_tumor_iou_model" "best_mean_iou_model")
 model_files=("best_loss_model")
 # ログフォルダのパスを定義
 train_log_dir="../../logs/train"
@@ -39,7 +39,7 @@ for batch_size in "${batch_size_list[@]}"; do
     # ログファイル名を定義
     log_file_name="${model_name}_${batch_size}_${learning_rate}.log"
     # トレーニングの実行とログ出力
-    # python3 train_fcn.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience" --attention_mode $attention_mode > "${train_log_dir}/${log_file_name}" 2>&1
+    python3 train_fcn.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience" --attention_mode $attention_mode > "${train_log_dir}/${log_file_name}" 2>&1
     
     # トレーニングが正常に終了したかをチェック
     if [ $? -ne 0 ]; then

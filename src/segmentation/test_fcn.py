@@ -27,7 +27,7 @@ from segment_utils.image_processing import(
 )
 
 from segment_utils.metrics import(
-    save_iou_to_csv_from_conf_matrix,
+    save_iou_to_csv,
     save_confusion_matrix_with_metrics,
     calculate_iou
 )
@@ -110,9 +110,12 @@ def main(args):
     all_predictions = np.concatenate(all_predictions)
 
     #それぞれのiouの平均
+    num_effective_ious = [len(test_image_paths) - count for count in all_nan_num_per_cls]
+    logger.info(f"{all_nan_num_per_cls=}")
+    logger.info(f"{num_effective_ious=}")
     avg_ious = [
-    iou / (len(test_image_paths) - count) if (len(test_image_paths) - count) > 0 else float('nan')  # countが0ならNaN
-    for iou, count in zip(all_ious, all_nan_num_per_cls)
+    iou /  count if count > 0 else float('nan')  # countが0ならNaN
+    for iou, count in zip(all_ious, num_effective_ious)
     ]
     miou = np.nanmean(avg_ious)
     logger.info(f"{avg_ious=}")
@@ -122,6 +125,7 @@ def main(args):
     # 混同行列とメトリクスを保存
     save_confusion_matrix_with_metrics(conf_matrix, metrics_segment_save_dir, class_names)
     # CSVにIoU結果を保存
+    save_iou_to_csv(avg_ious, miou, class_names, metrics_segment_save_dir, num_classes)
     # save_iou_to_csv_from_conf_matrix(conf_matrix, class_names, metrics_segment_save_dir, num_classes)
     
 

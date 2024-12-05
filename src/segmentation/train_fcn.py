@@ -266,6 +266,7 @@ def one_epoch_train(
     """          
     running_loss = 0.0
     train_ious = []
+    all_train_nan_num_per_cls = [] #クラスごとのnanの個数
     model.train()
     for images, masks, _ in train_loader:
         images = images.to(device)
@@ -292,13 +293,20 @@ def one_epoch_train(
         
         #trainのiousの計算
         preds = outputs.argmax(1).cpu().numpy()
-        iou = calculate_iou(preds, masks, class_num)  # 5クラスの場合
+        train_iou, train_nan_num_per_cls = calculate_iou(preds, masks, class_num)  # 5クラスの場合
         if not train_ious:  # iousが空の場合
-            train_ious = iou.copy()  # 最初のリストをそのまま代入
+            train_ious = train_iou.copy()  # 最初のリストをそのまま代入
+            all_train_nan_num_per_cls = train_nan_num_per_cls.copy()
         else:
-            train_ious = [x + y for x, y in zip(train_ious, iou)]  # 要素ごとに加算
+            train_ious = [x + y for x, y in zip(train_ious, train_iou)]  # 要素ごとに加算
+            all_train_nan_num_per_cls = [x + y for x, y in zip(all_train_nan_num_per_cls, train_nan_num_per_cls)]  # 2回目以降は加算
     epoch_loss = running_loss / len(train_loader)
     train_ious = [iou / len(train_loader) for iou in train_ious]
+    train_num_effective_ious = [len(train_loader) - count for count in all_train_nan_num_per_cls]
+    train_ious = [
+    iou /  count if count > 0 else float('nan')  # countが0ならNaN
+    for iou, count in zip(train_ious, train_num_effective_ious)
+    ]
     logger.info(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss/len(train_loader)}")
 
     return epoch_loss, train_ious
@@ -317,6 +325,7 @@ def eval_dataset_and_save_images(
 
     running_loss = 0.
     val_ious = []
+    all_val_nan_num_per_cls = [] #クラスごとのnanの個数
     model.eval()
     with torch.no_grad():
         for images, masks, image_names in data_loader:
@@ -343,12 +352,19 @@ def eval_dataset_and_save_images(
                     segment_save(seg_img_dir, org_img_dir / image_name, output_prediction)
             
             # 各クラスごとのIoUを計算
-            iou = calculate_iou(preds, masks, class_num)  # 5クラスの場合
+            val_iou, val_nan_num_per_cls = calculate_iou(preds, masks, class_num)  # 5クラスの場合
             if not val_ious:  # iousが空の場合
-                val_ious = iou.copy()  # 最初のリストをそのまま代入
+                val_ious = val_iou.copy()  # 最初のリストをそのまま代入
+                all_val_nan_num_per_cls = val_nan_num_per_cls.copy()
             else:
-                val_ious = [x + y for x, y in zip(val_ious, iou)]  # 要素ごとに加算
+                val_ious = [x + y for x, y in zip(val_ious, val_iou)]  # 要素ごとに加算
+                all_val_nan_num_per_cls = [x + y for x, y in zip(all_val_nan_num_per_cls, val_nan_num_per_cls)]  # 2回目以降は加算
+        val_num_effective_ious = [len(data_loader) - count for count in all_val_nan_num_per_cls]
         val_ious = [iou / len(data_loader) for iou in val_ious]
+        val_ious = [
+        iou /  count if count > 0 else float('nan')  # countが0ならNaN
+        for iou, count in zip(val_ious, val_num_effective_ious)
+        ]
     return running_loss / len(data_loader), val_ious
 
 def resize_mask(

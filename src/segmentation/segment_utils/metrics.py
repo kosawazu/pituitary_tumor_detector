@@ -81,6 +81,44 @@ def calculate_iou_from_confusion_matrix(
 
 #     print(f"IoU and mIoU results saved to {csv_file}")
 
+def save_iou_to_csv(
+    iou_per_class: List[float],
+    miou: np.ndarray, 
+    class_names: List[str], 
+    save_path: Path, 
+    num_classes: int
+) -> None:
+    """
+    混同行列から計算したIoUをCSVに保存し、最後にmIoUを記載する関数。
+
+    Args:
+        conf_matrix (numpy.ndarray): 混同行列
+        class_names (list): クラス名のリスト
+        save_path (Path): 保存先のパス
+        num_classes (int): クラス数。デフォルトは5。
+    """
+    # CSVファイルの保存先を指定
+    csv_file = save_path / "iou_results_from_conf_matrix.csv"
+
+    # CSVファイルが存在しない場合はヘッダーを作成
+    if not csv_file.exists():
+        with open(csv_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            # IoUのみを表示するためのヘッダー
+            writer.writerow(['Class', 'IoU'])
+
+    # IoU結果をCSVに書き込む (1行目はクラス名、2行目以降にIoUを出力)
+    with open(csv_file, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        for i in range(num_classes):
+            # クラス名とIoUをそれぞれの行に書き込み
+            writer.writerow([class_names[i], round(iou_per_class[i], 3)])
+
+        # 最後の行にmIoUを書き込む
+        writer.writerow(['mIoU', round(miou, 3)])
+
+    print(f"IoU and mIoU results saved to {csv_file}")
+
 def save_confusion_matrix_with_metrics(
     conf_matrix: np.ndarray, 
     save_path: Path, 
@@ -164,11 +202,9 @@ def calculate_iou(
         # IoU計算
         intersection = (pred_inds & target_inds).sum().float().item()
         union = (pred_inds | target_inds).sum().float().item()
-        
         if union == 0:
             nan_num_per_cls[cls] += 1
             ious.append(0)  # クラスが存在しなければ0を追加
         else:
             ious.append(intersection / union)
-
     return ious, nan_num_per_cls
