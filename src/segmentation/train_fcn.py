@@ -301,12 +301,12 @@ def one_epoch_train(
             train_ious = [x + y for x, y in zip(train_ious, train_iou)]  # 要素ごとに加算
             all_train_nan_num_per_cls = [x + y for x, y in zip(all_train_nan_num_per_cls, train_nan_num_per_cls)]  # 2回目以降は加算
     epoch_loss = running_loss / len(train_loader)
-    train_ious = [iou / len(train_loader) for iou in train_ious]
     train_num_effective_ious = [len(train_loader) - count for count in all_train_nan_num_per_cls]
     train_ious = [
     iou /  count if count > 0 else float('nan')  # countが0ならNaN
     for iou, count in zip(train_ious, train_num_effective_ious)
     ]
+    logger.debug(f"data_loader_length:{len(train_loader)}")
     logger.info(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss/len(train_loader)}")
 
     return epoch_loss, train_ious
