@@ -7,41 +7,33 @@ import cv2
 import torch
 from torchvision import models, transforms
 import torch.optim as optim
+
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+from torch import Tensor
+from typing import Callable
 
 sys.path.append("../")
 # 自作モジュール
 from segmentation import (
-    transform,
-    segment_save
-)
-
-from segment_utils.image_processing import(
-    segment_save
+    transform
 )
 
 from segment_utils.dataset_utils import(
     transform,
 )
 
-from preprocessing.split_dataset import (
-    split_dataset
-)
-
 from utils.model_utils import (
     setup_fcn_model,
     setup_device,
-    EarlyStopping
 )
 
 logger = logging.getLogger(__name__)
 
 def main(args):
-    class_num = args.class_num
     save_dir = args.save_dir
     video_path = args.data_dir / Path("video", "video4.avi")
     model_path = args.model_path
@@ -62,8 +54,13 @@ def main(args):
     # 動画のセグメンテーションを実行
     process_video(video_path, output_video_path, model, transform, device, class_labels, segment_save_dir)
 
-def process_video(video_path, output_video_path, model, transform, device, class_labels, segment_save_dir):
-    # 動画ファイルの読み込み
+def process_video(
+    video_path: Path, 
+    output_video_path: Path, 
+    model: nn.Module, 
+    device: torch.device, 
+    transform: Callable[[Image.Image], Tensor]
+):
     cap = cv2.VideoCapture(str(video_path))
 
     # 動画の基本情報を取得
@@ -72,15 +69,15 @@ def process_video(video_path, output_video_path, model, transform, device, class
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    # 出力する動画ファイルの設定（codec, FPS, サイズ）
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # mp4形式
-    # out = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width, height))
+    # 出力する動画ファイルの設定
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width, height))
 
     frame_idx = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
-            break  # フレームが取得できない場合は終了
+            break
 
         frame_idx += 1
         print(f"Processing frame {frame_idx}/{total_frames}")
@@ -99,36 +96,32 @@ def process_video(video_path, output_video_path, model, transform, device, class
         # 各ピクセルに最も確率の高いクラスを割り当てる
         output_predictions = output.argmax(1).squeeze().cpu().numpy()
 
-        # セグメント結果をカラーマップで表示（例：cv2.COLORMAP_JET）
+        # セグメント結果をカラーマップで表示
         segmented_frame = cv2.applyColorMap((output_predictions * (255 / output_predictions.max())).astype(np.uint8), cv2.COLORMAP_JET)
 
-        # フレームとして書き出す（カラーマップ結果を動画に書き込む）
-        # out.write(segmented_frame)
+        # 元の画像とセグメント結果を重ね合わせる
+        alpha = 0.5  # 透明度
+        blended_frame = cv2.addWeighted(frame, 1 - alpha, segmented_frame, alpha, 0)
 
-        # フレームごとにセグメント画像として保存
-        segment_save(segment_save_dir, video_path.stem, f"frame_{frame_idx}", output_predictions)
+        # 結果を表示（オプション）
+        cv2.imshow('Segmentation', blended_frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-def segment_save(save_dir, video_name, frame_name, output_predictions):
-    # 保存ディレクトリの作成
-    frame_save_dir = save_dir / video_name
-    os.makedirs(frame_save_dir, exist_ok=True)
-    
-    # セグメント結果をカラーマップに変換して保存
-    save_path = frame_save_dir / f"{frame_name}_segmentation.png"
-    segmented_frame = (output_predictions * (255 / output_predictions.max())).astype(np.uint8)
-    
-    # OpenCVでカラーマップを適用して保存
-    color_mapped_frame = cv2.applyColorMap(segmented_frame, cv2.COLORMAP_JET)
-    cv2.imwrite(str(save_path), color_mapped_frame)
-    print(f"Saved frame {frame_name} segmentation at: {save_path}")
+        # 結果を動画ファイルに書き込む
+        out.write(blended_frame)
+
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()
 
 def parse_args():
     # オプションの解析
     parser = argparse.ArgumentParser(description="骨格データの生成")
 
-    parser.add_argument("--data_dir",
+    parser.add_argument("--video_path",
                         type=Path,
-                        default="../../../data/",
+                        default="../../data/video/",
                         help='入力データのディレクトリパス'
                         )
     parser.add_argument("--save_dir",
