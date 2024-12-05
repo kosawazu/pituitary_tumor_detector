@@ -28,7 +28,8 @@ from segment_utils.image_processing import(
 
 from segment_utils.metrics import(
     save_iou_to_csv_from_conf_matrix,
-    save_confusion_matrix_with_metrics
+    save_confusion_matrix_with_metrics,
+    calculate_iou
 )
 
 from utils.model_utils import (
@@ -65,15 +66,17 @@ def main(args):
     logger.info(f"{model_path}を読み込みます")
     model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
-    device, model = setup_device(model, model_path=model_path,)
+    device, model = setup_device(model, model_path=model_path)
 
     # モデルを推論モードに設定
     model.eval()
 
     all_ground_truths = []
     all_predictions = []
-
+    all_ious = []
+    all_nan_num_per_cls = [] #クラスごとのnanの個数
     for test_image_path, test_image_label in zip(test_image_paths, test_true_labels):
+        test_image_label_tensor = torch.tensor(test_image_label, device=device)
         # 入力画像を読み込み、前処理
         img = Image.open(test_image_path).convert('RGB')
         input_tensor = transform(img)
@@ -86,7 +89,13 @@ def main(args):
         # 各ピクセルに最も確率の高いクラスを割り当てる
         output_resized = F.interpolate(output, size=test_image_label.shape[-2:], mode='bilinear', align_corners=False)
         output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
-
+        ious, nan_num_per_cls = calculate_iou(output_predictions, test_image_label_tensor, num_classes)
+        if not all_ious:
+            all_ious = ious.copy()  # 初回は直接設定
+            all_nan_num_per_cls = nan_num_per_cls.copy()
+        else:
+            all_ious = [x + y for x, y in zip(all_ious, ious)]  # 2回目以降は加算
+            all_nan_num_per_cls = [x + y for x, y in zip(all_nan_num_per_cls, nan_num_per_cls)]  # 2回目以降は加算
         # ピクセルごとに予測ラベルと正解ラベルをフラットにする
         all_ground_truths.append(test_image_label.flatten())
         all_predictions.append(output_predictions.flatten())
@@ -100,12 +109,20 @@ def main(args):
     all_ground_truths = np.concatenate(all_ground_truths)
     all_predictions = np.concatenate(all_predictions)
 
+    #それぞれのiouの平均
+    avg_ious = [
+    iou / (len(test_image_paths) - count) if (len(test_image_paths) - count) > 0 else float('nan')  # countが0ならNaN
+    for iou, count in zip(all_ious, all_nan_num_per_cls)
+    ]
+    miou = np.nanmean(avg_ious)
+    logger.info(f"{avg_ious=}")
+    logger.info(f"{miou=}")
     # ピクセル単位の混同行列を作成
     conf_matrix = confusion_matrix(all_ground_truths, all_predictions, labels=list(range(num_classes)))
     # 混同行列とメトリクスを保存
     save_confusion_matrix_with_metrics(conf_matrix, metrics_segment_save_dir, class_names)
     # CSVにIoU結果を保存
-    save_iou_to_csv_from_conf_matrix(conf_matrix, class_names, metrics_segment_save_dir, num_classes)
+    # save_iou_to_csv_from_conf_matrix(conf_matrix, class_names, metrics_segment_save_dir, num_classes)
     
 
 
