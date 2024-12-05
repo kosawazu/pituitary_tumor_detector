@@ -49,7 +49,6 @@ for batch_size in "${batch_size_list[@]}"; do
     fi
 
     for model_file in "${model_files[@]}"; do
-    echo "a"
       # テストの実行とログ出力
       python3 test_fcn.py --model_name "$model_name" --save_model_file "$model_file" --batch_size "$batch_size" --learning_rate "$learning_rate" --attention_mode $attention_mode > "${test_log_dir}/${log_file_name}" 2>&1
     done
