@@ -7,13 +7,14 @@ import cv2
 import torch
 from torchvision import models, transforms
 import torch.optim as optim
-
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 from torch import Tensor
+import time
 from typing import Callable
 
 sys.path.append("../")
@@ -67,74 +68,75 @@ def process_video(
     device: torch.device, 
     transform: Callable[[Image.Image], Tensor]
 ):
-    corors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
+    colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
     cap = cv2.VideoCapture(str(video_path))
-    # 動画の基本情報を取得
+    
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    # 出力する動画ファイルの設定
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width, height))
 
+    frame_time = 1.0 / fps
+    last_process_time = time.time()
     frame_idx = 0
+    last_segmentation_frame = None
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
+        current_time = time.time()
+        elapsed_time = current_time - last_process_time
+
         frame_idx += 1
-        print(f"Processing frame {frame_idx}/{total_frames}")
 
-        # フレームをPILの画像に変換
-        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        if elapsed_time >= 1.0 or last_segmentation_frame is None:
+            print(f"Processing frame {frame_idx}/{total_frames}")
 
-        # 前処理
-        input_tensor = transform(img)
-        input_batch = input_tensor.unsqueeze(0).to(device)
+            img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            input_tensor = transform(img)
+            input_batch = input_tensor.unsqueeze(0).to(device)
 
-        # 推論
-        with torch.no_grad():
-            output = model(input_batch)['out']
+            with torch.no_grad():
+                output = model(input_batch)['out']
 
-        # 無視するクラス（背景）
-        IGNORED_CLASS = 0
+            output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='nearest')
+            output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
 
-        # 各ピクセルに最も確率の高いクラスを割り当てる
-        output_predictions = output.argmax(1).squeeze().cpu().numpy()
-        unique_values = np.unique(output_predictions)
-        logger.info(f"Unique values in output_predictions:{unique_values}")
-        # セグメンテーションマスクを作成（4チャンネル：BGRA）
-        segmentation_mask = np.zeros((output_predictions.shape[0], output_predictions.shape[1], 4), dtype=np.uint8)
-        for class_id, color in corors_bgr.items():
-            if class_id != IGNORED_CLASS:
-                mask = output_predictions == class_id
-                segmentation_mask[mask] = color + (128,)  # 元の色に半透明のアルファチャンネルを追加
+            segmentation_mask = np.zeros((frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+            for class_id, color in colors_bgr.items():
+                if class_id != 0:  # Ignore background class
+                    mask = output_predictions == class_id
+                    segmentation_mask[mask] = color + (128,)
 
-        # segmentation_maskのサイズをframeに合わせる
-        segmentation_mask = cv2.resize(segmentation_mask, (frame.shape[1], frame.shape[0]))
+            frame_bgra = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+            alpha_channel = segmentation_mask[:, :, 3] / 255.0
+            for c in range(3):
+                frame_bgra[:, :, c] = frame_bgra[:, :, c] * (1 - alpha_channel) + segmentation_mask[:, :, c] * alpha_channel
 
-        print("frame shape:", frame.shape)
-        print("segmentation_mask shape:", segmentation_mask.shape)
+            last_segmentation_frame = frame_bgra
+            last_process_time = current_time
 
-        # フレームをBGRAに変換
-        frame_bgra = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+        # Use the last segmentation result if we're not processing this frame
+        if last_segmentation_frame is not None:
+            frame_to_show = last_segmentation_frame
+        else:
+            frame_to_show = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
 
-        # マスクを適用
-        alpha_channel = segmentation_mask[:, :, 3] / 255.0
-        for c in range(3):  # BGRチャンネルに対して
-            frame_bgra[:, :, c] = frame_bgra[:, :, c] * (1 - alpha_channel) + segmentation_mask[:, :, c] * alpha_channel
+        cv2.imshow('Segmentation', frame_to_show)
+        out.write(cv2.cvtColor(frame_to_show, cv2.COLOR_BGRA2BGR))
 
-        # 結果を表示（オプション）
-        cv2.imshow('Segmentation', frame_bgra)
+        # Calculate the time spent on processing and adjust sleep time
+        process_time = time.time() - current_time
+        sleep_time = max(0, frame_time - process_time)
+        time.sleep(sleep_time)
+
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
-        # BGRに戻して動画ファイルに書き込む（必要な場合）
-        blended_frame_bgr = cv2.cvtColor(frame_bgra, cv2.COLOR_BGRA2BGR)
-        out.write(blended_frame_bgr)
 
     cap.release()
     out.release()
