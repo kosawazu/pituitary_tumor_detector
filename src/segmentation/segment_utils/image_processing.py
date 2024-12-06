@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import torch
 
-colors = {
+COLORS = {
     0: (0, 0, 255),
     1: (0, 255, 0),
     2: (255, 0, 0),
@@ -14,7 +14,7 @@ colors = {
 }
 
 # クラス4のグラデーション用の色を定義
-gradient_colors = [
+GRADIENT_COLORS = [
     (230, 230, 250),  # 薄い紫（ラベンダー）
     (128, 0, 128),    # 普通の紫（元の基準色）
     (75, 0, 130)      # 濃い紫（インディゴ）
@@ -35,7 +35,7 @@ def segment_save(
 
     # カラーマップに基づいて output_predictions を色付け
     output_colored = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
-    for class_index, color in colors.items():
+    for class_index, color in COLORS.items():
         output_colored[output_predictions == class_index] = color
 
     # PIL画像に変換
@@ -82,7 +82,7 @@ def save_blended_image(
 
     # output_predictions からカラー画像を作成
     output_colored = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
-    for class_index, color in colors.items():
+    for class_index, color in COLORS.items():
         if class_index == 0:  # 背景クラスを除く
             continue
         output_colored[output_predictions == class_index] = color
@@ -149,12 +149,12 @@ def save_blended_image_with_class4_gradient(
             # クラス4の場合、確率に基づいてグラデーションを適用
             mask = pred_class == class_index
             
-            output_colored[mask & (max_prob < thresholds[0])] = gradient_colors[0]
-            output_colored[mask & (max_prob >= thresholds[0]) & (max_prob < thresholds[1])] = gradient_colors[1]
-            output_colored[mask & (max_prob >= thresholds[1])] = gradient_colors[2]
+            output_colored[mask & (max_prob < thresholds[0])] = GRADIENT_COLORS[0]
+            output_colored[mask & (max_prob >= thresholds[0]) & (max_prob < thresholds[1])] = GRADIENT_COLORS[1]
+            output_colored[mask & (max_prob >= thresholds[1])] = GRADIENT_COLORS[2]
         else:
             # その他のクラスは固定色を使用
-            output_colored[pred_class == class_index] = colors[class_index]
+            output_colored[pred_class == class_index] = COLORS[class_index]
 
     # PIL画像に変換
     segmentation_image = Image.fromarray(output_colored)

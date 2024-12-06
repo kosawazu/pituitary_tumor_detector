@@ -22,37 +22,39 @@ from segmentation import (
     transform
 )
 
-from segment_utils.dataset_utils import(
-    transform,
-)
-
 from utils.model_utils import (
     setup_fcn_model,
-    setup_device,
+    setup_device
+)
+
+from segment_utils.dataset_utils import (
+    CLASS_MAPPING
+)
+from segment_utils.image_processing import (
+    COLORS,
+    GRADIENT_COLORS
+    
 )
 
 logger = logging.getLogger(__name__)
 
 def main(args):
     save_dir = args.save_dir
-    video_path = args.data_dir / Path("video", "video4.avi")
-    model_path = args.model_path
-    segment_save_dir = save_dir / Path("segment", "video", "fcn_resnet50")
-    output_video_path = save_dir / Path("segment_video", "video", "fcn_resnet50")
-    os.makedirs(segment_save_dir, exist_ok=True)
-    class_labels = ['back', 'damage', 'normal']
+    model_name = args.model_name
+    attention_mode = args.attention_mode
+    video_path = args.video_path
+    model_path = args.model_dir / Path(model_name, "best_tumor_iou_model.pth")
+    output_video_path = save_dir / Path("segment_video", model_name)
+    class_num = len(CLASS_MAPPING)
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
-    model = setup_fcn_model("fcn_resnet50")
+    model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
+    # デバイスの設定（GPUが利用可能なら使用）
+    device, model = setup_device(model, model_path=model_path)
 
     # モデルを推論モードに設定
     model.eval()
-
-    # デバイスの設定（GPUが利用可能なら使用）
-    print(f"{model_path=}")
-    device, model = setup_device(model, model_path)
-
     # 動画のセグメンテーションを実行
-    process_video(video_path, output_video_path, model, transform, device, class_labels, segment_save_dir)
+    process_video(video_path, output_video_path, model, device, transform)
 
 def process_video(
     video_path: Path, 
@@ -99,6 +101,16 @@ def process_video(
         # セグメント結果をカラーマップで表示
         segmented_frame = cv2.applyColorMap((output_predictions * (255 / output_predictions.max())).astype(np.uint8), cv2.COLORMAP_JET)
 
+        # segmented_frameのサイズをframeに合わせる
+        segmented_frame = cv2.resize(segmented_frame, (frame.shape[1], frame.shape[0]))
+
+        # segmented_frameのチャンネル数をframeに合わせる
+        if segmented_frame.shape[2] != 3:
+            segmented_frame = cv2.cvtColor(segmented_frame, cv2.COLOR_GRAY2BGR)
+
+        print("frame shape:", frame.shape)
+        print("segmented_frame shape:", segmented_frame.shape)
+
         # 元の画像とセグメント結果を重ね合わせる
         alpha = 0.5  # 透明度
         blended_frame = cv2.addWeighted(frame, 1 - alpha, segmented_frame, alpha, 0)
@@ -119,26 +131,33 @@ def parse_args():
     # オプションの解析
     parser = argparse.ArgumentParser(description="骨格データの生成")
 
+    parser.add_argument("--model_name",
+                        type=str,
+                        default="fcn_resnet50",
+                        choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19", "deeplabv3_resnet101"],
+                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19, deeplabv3_resnet101."
+                        )
+    parser.add_argument('--attention_mode', 
+                        type=str,
+                        default="none",
+                        choices=["none", "self_attention", "channel_attention", "both"],
+                        help='attention_layerの使用するかを指定する変数'
+                        )
     parser.add_argument("--video_path",
                         type=Path,
-                        default="../../data/video/",
+                        default="../../data/video/test_video.mp4",
                         help='入力データのディレクトリパス'
                         )
     parser.add_argument("--save_dir",
                         type=Path,
-                        default="../../../result/",
+                        default="../../result/nagoya",
                         help='結果を保存するディレクトリパス'
                         )
-    parser.add_argument("--model_path",
+    parser.add_argument("--model_dir",
                         type=Path,
-                        default="../../../model/fcn_resnet50/best_model_gear.pth",
+                        default="../../result/nagoya/demo_model",
                         help='転移学習モデルパラメータのパス'
                         )    
-    parser.add_argument("--class_num",
-                        type=int,
-                        default=3,
-                        help='分類するクラス数'
-                        )
     parser.add_argument(
                         '--loglevel',
                         default='INFO',  # デフォルトのログレベルをINFOに設定

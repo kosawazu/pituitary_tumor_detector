@@ -27,7 +27,15 @@ def setup_device(
         logger.info("CUDA is not available. Using CPU.")
     model.to(device)
     if model_path is not None:
-        model.load_state_dict(torch.load(model_path))
+        if torch.cuda.is_available():
+            if device_count > 1:
+                model.load_state_dict(torch.load(model_path))
+            if device_count == 1:
+                loaded_state_dict = torch.load(model_path)
+                new_state_dict = {k.replace('module.', ''): v for k, v in loaded_state_dict.items()}
+                model.load_state_dict(new_state_dict)
+        else:
+            model.load_state_dict(torch.load(model_path, map_location="cpu"))
     return device, model
 
 def setup_fcn_model(
