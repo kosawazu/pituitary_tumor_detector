@@ -56,6 +56,10 @@ def main(args):
     # 動画のセグメンテーションを実行
     process_video(video_path, output_video_path, model, device, transform)
 
+# RGB から BGR への変換関数
+def rgb_to_bgr(color):
+    return (color[2], color[1], color[0])
+
 def process_video(
     video_path: Path, 
     output_video_path: Path, 
@@ -63,8 +67,8 @@ def process_video(
     device: torch.device, 
     transform: Callable[[Image.Image], Tensor]
 ):
+    corors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
     cap = cv2.VideoCapture(str(video_path))
-
     # 動画の基本情報を取得
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -95,33 +99,42 @@ def process_video(
         with torch.no_grad():
             output = model(input_batch)['out']
 
+        # 無視するクラス（背景）
+        IGNORED_CLASS = 0
+
         # 各ピクセルに最も確率の高いクラスを割り当てる
         output_predictions = output.argmax(1).squeeze().cpu().numpy()
+        unique_values = np.unique(output_predictions)
+        logger.info(f"Unique values in output_predictions:{unique_values}")
+        # セグメンテーションマスクを作成（4チャンネル：BGRA）
+        segmentation_mask = np.zeros((output_predictions.shape[0], output_predictions.shape[1], 4), dtype=np.uint8)
+        for class_id, color in corors_bgr.items():
+            if class_id != IGNORED_CLASS:
+                mask = output_predictions == class_id
+                segmentation_mask[mask] = color + (128,)  # 元の色に半透明のアルファチャンネルを追加
 
-        # セグメント結果をカラーマップで表示
-        segmented_frame = cv2.applyColorMap((output_predictions * (255 / output_predictions.max())).astype(np.uint8), cv2.COLORMAP_JET)
-
-        # segmented_frameのサイズをframeに合わせる
-        segmented_frame = cv2.resize(segmented_frame, (frame.shape[1], frame.shape[0]))
-
-        # segmented_frameのチャンネル数をframeに合わせる
-        if segmented_frame.shape[2] != 3:
-            segmented_frame = cv2.cvtColor(segmented_frame, cv2.COLOR_GRAY2BGR)
+        # segmentation_maskのサイズをframeに合わせる
+        segmentation_mask = cv2.resize(segmentation_mask, (frame.shape[1], frame.shape[0]))
 
         print("frame shape:", frame.shape)
-        print("segmented_frame shape:", segmented_frame.shape)
+        print("segmentation_mask shape:", segmentation_mask.shape)
 
-        # 元の画像とセグメント結果を重ね合わせる
-        alpha = 0.5  # 透明度
-        blended_frame = cv2.addWeighted(frame, 1 - alpha, segmented_frame, alpha, 0)
+        # フレームをBGRAに変換
+        frame_bgra = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+
+        # マスクを適用
+        alpha_channel = segmentation_mask[:, :, 3] / 255.0
+        for c in range(3):  # BGRチャンネルに対して
+            frame_bgra[:, :, c] = frame_bgra[:, :, c] * (1 - alpha_channel) + segmentation_mask[:, :, c] * alpha_channel
 
         # 結果を表示（オプション）
-        cv2.imshow('Segmentation', blended_frame)
+        cv2.imshow('Segmentation', frame_bgra)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-        # 結果を動画ファイルに書き込む
-        out.write(blended_frame)
+        # BGRに戻して動画ファイルに書き込む（必要な場合）
+        blended_frame_bgr = cv2.cvtColor(frame_bgra, cv2.COLOR_BGRA2BGR)
+        out.write(blended_frame_bgr)
 
     cap.release()
     out.release()
