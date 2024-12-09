@@ -96,6 +96,8 @@ def process_video(
         frame_idx += 1
 
         if elapsed_time >= 1.0 or last_segmentation_frame is None:
+            original_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+
             print(f"Processing frame {frame_idx}/{total_frames}")
 
             img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -108,25 +110,29 @@ def process_video(
             output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='bilinear', align_corners=False)
             output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
 
-            segmentation_mask = np.zeros((frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+            segmentation_mask = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
             for class_id, color in colors_bgr.items():
                 if class_id != 0:  # Ignore background class
                     mask = output_predictions == class_id
-                    segmentation_mask[mask] = color + (128,)
+                    segmentation_mask[mask] = color[::-1]  # BGRをRGBに変換
 
-            frame_bgra = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
-            alpha_channel = segmentation_mask[:, :, 3] / 255.0
-            for c in range(3):
-                frame_bgra[:, :, c] = frame_bgra[:, :, c] * (1 - alpha_channel) + segmentation_mask[:, :, c] * alpha_channel
+            # セグメンテーションマスクをPIL形式に変換
+            segmentation_image = Image.fromarray(segmentation_mask)
 
-            last_segmentation_frame = frame_bgra
+            # セグメンテーション結果のサイズを元画像に合わせる
+            segmentation_image_resized = segmentation_image.resize(original_image.size, resample=Image.NEAREST)
+
+            # 元画像とセグメンテーション画像を重ね合わせ
+            blended_image = Image.blend(original_image, segmentation_image_resized, alpha=0.2)
+
+            last_segmentation_frame = cv2.cvtColor(np.array(blended_image), cv2.COLOR_RGB2BGR)
             last_process_time = current_time
 
         # Use the last segmentation result if we're not processing this frame
         if last_segmentation_frame is not None:
             segmentation_frame = last_segmentation_frame
         else:
-            segmentation_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+            segmentation_frame = frame  
 
         # 元の動画とセグメンテーション結果を横に並べる
         combined_frame = np.hstack((frame, cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR)))
