@@ -76,8 +76,9 @@ def process_video(
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+    # 出力動画のサイズを2倍の幅に設定
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width, height))
+    out = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width*2, height))
 
     frame_time = 1.0 / fps
     last_process_time = time.time()
@@ -104,7 +105,7 @@ def process_video(
             with torch.no_grad():
                 output = model(input_batch)['out']
 
-            output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='nearest')
+            output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='bilinear', align_corners=False)
             output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
 
             segmentation_mask = np.zeros((frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
@@ -123,17 +124,16 @@ def process_video(
 
         # Use the last segmentation result if we're not processing this frame
         if last_segmentation_frame is not None:
-            frame_to_show = last_segmentation_frame
+            segmentation_frame = last_segmentation_frame
         else:
-            frame_to_show = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+            segmentation_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
 
-        cv2.imshow('Segmentation', frame_to_show)
-        out.write(cv2.cvtColor(frame_to_show, cv2.COLOR_BGRA2BGR))
+        # 元の動画とセグメンテーション結果を横に並べる
+        combined_frame = np.hstack((frame, cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR)))
 
-        # Calculate the time spent on processing and adjust sleep time
-        process_time = time.time() - current_time
-        sleep_time = max(0, frame_time - process_time)
-        time.sleep(sleep_time)
+
+        cv2.imshow('Original vs Segmentation', combined_frame)
+        out.write(combined_frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
