@@ -140,12 +140,35 @@ def create_segmentation_mask(
             segmentation_mask[mask] = color[::-1]
     return segmentation_mask
 
-def resize_frame(
-    frame: np.ndarray, 
-    window_name: str
-) -> np.ndarray:
-    current_width, current_height = cv2.getWindowImageRect(window_name)[2:4]
-    return cv2.resize(frame, (current_width, current_height))
+def resize_frame(frame: np.ndarray, window_name: str) -> np.ndarray:
+    window_width, window_height = cv2.getWindowImageRect(window_name)[2:4]
+    frame_height, frame_width = frame.shape[:2]
+    
+    # アスペクト比を計算
+    aspect_ratio = frame_width / frame_height
+    window_ratio = window_width / window_height
+
+    if window_ratio > aspect_ratio:
+        # ウィンドウが画像より横長の場合
+        new_height = window_height
+        new_width = int(new_height * aspect_ratio)
+    else:
+        # ウィンドウが画像より縦長の場合
+        new_width = window_width
+        new_height = int(new_width / aspect_ratio)
+
+    # フレームをリサイズ
+    resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
+    # 黒い背景を作成
+    background = np.zeros((window_height, window_width, 3), dtype=np.uint8)
+
+    # リサイズしたフレームを中央に配置
+    y_offset = (window_height - new_height) // 2
+    x_offset = (window_width - new_width) // 2
+    background[y_offset:y_offset+new_height, x_offset:x_offset+new_width] = resized
+
+    return background
 
 def process_video(
     video_path: Path, 
