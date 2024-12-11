@@ -68,7 +68,10 @@ def process_video(
     device: torch.device, 
     transform: Callable[[Image.Image], Tensor]
 ):
+    # 閾値を定義（腫瘍グラデーション）
+    thresholds = [0.85, 0.90, 0.95]
     colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
+    gradient_colors_bgr = [rgb_to_bgr(color) for color in GRADIENT_COLORS]
     cap = cv2.VideoCapture(str(video_path))
     
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -109,10 +112,23 @@ def process_video(
 
             output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='bilinear', align_corners=False)
             output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
+            # リサイズした出力を確率に変換
+            probabilities = F.softmax(output_resized, dim=1)
+            # 確率をCPUに移動し、NumPy配列に変換
+            probabilities = probabilities.cpu().numpy()
+            #最も確率の高い値の取得
+            max_prob = probabilities[0].max(axis=0)
 
             segmentation_mask = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
             for class_id, color in colors_bgr.items():
-                if class_id != 0:  # Ignore background class
+                if class_id == 0:
+                    continue
+                elif class_id == 4:
+                    mask = output_predictions == class_id
+                    segmentation_mask[mask & (max_prob < thresholds[0])] = gradient_colors_bgr[0]
+                    segmentation_mask[mask & (max_prob >= thresholds[0]) & (max_prob < thresholds[1])] = gradient_colors_bgr[1]
+                    segmentation_mask[mask & (max_prob >= thresholds[1])] = gradient_colors_bgr[2]
+                else:  # Ignore background class
                     mask = output_predictions == class_id
                     segmentation_mask[mask] = color[::-1]  # BGRをRGBに変換
 
@@ -123,7 +139,7 @@ def process_video(
             segmentation_image_resized = segmentation_image.resize(original_image.size, resample=Image.NEAREST)
 
             # 元画像とセグメンテーション画像を重ね合わせ
-            blended_image = Image.blend(original_image, segmentation_image_resized, alpha=0.2)
+            blended_image = Image.blend(original_image, segmentation_image_resized, alpha=0.4)
 
             last_segmentation_frame = cv2.cvtColor(np.array(blended_image), cv2.COLOR_RGB2BGR)
             last_process_time = current_time
