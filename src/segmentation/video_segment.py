@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from torch import Tensor
 import time
 from screeninfo import get_monitors
-from typing import Callable
+from typing import Callable, Tuple, List, Dict
 
 sys.path.append("../")
 # 自作モジュール
@@ -62,34 +62,105 @@ def main(args):
 def rgb_to_bgr(color):
     return (color[2], color[1], color[0])
 
+def initialize_video(
+    video_path: Path
+) -> Tuple[cv2.VideoCapture, int, int, int, int]:
+    cap = cv2.VideoCapture(str(video_path))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    return cap, width, height, fps, total_frames
+
+def setup_window(
+    width: int, 
+    height: int
+) -> None:
+    screen_width, screen_height = get_screen_resolution()
+    cv2.namedWindow('Original vs Segmentation', cv2.WINDOW_NORMAL)
+    initial_width = min(screen_width, width * 2)
+    initial_height = int(height * (initial_width / (width * 2)))
+    cv2.resizeWindow('Original vs Segmentation', initial_width, initial_height)
+
+def create_video_writer(
+    output_path: Path, 
+    width: int, height: int, 
+    fps: int
+) -> cv2.VideoWriter:
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    return cv2.VideoWriter(str(output_path), fourcc, fps, (width*2, height))
+
+def process_frame(
+    frame: np.ndarray, 
+    model: nn.Module, 
+    device: torch.device, 
+    transform: Callable[[Image.Image], Tensor], 
+    thresholds: List[float], 
+    colors_bgr: Dict[int, Tuple[int, int, int]], 
+    gradient_colors_bgr: List[Tuple[int, int, int]]
+) -> np.ndarray:
+    original_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    input_tensor = transform(img)
+    input_batch = input_tensor.unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        output = model(input_batch)['out']
+
+    output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='bilinear', align_corners=False)
+    output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
+    probabilities = F.softmax(output_resized, dim=1).cpu().numpy()
+    max_prob = probabilities[0].max(axis=0)
+
+    segmentation_mask = create_segmentation_mask(output_predictions, max_prob, thresholds, colors_bgr, gradient_colors_bgr)
+    segmentation_image = Image.fromarray(segmentation_mask)
+    segmentation_image_resized = segmentation_image.resize(original_image.size, resample=Image.NEAREST)
+    blended_image = Image.blend(original_image, segmentation_image_resized, alpha=0.4)
+
+    return cv2.cvtColor(np.array(blended_image), cv2.COLOR_RGB2BGR)
+
+def create_segmentation_mask(
+    output_predictions: np.ndarray, 
+    max_prob: np.ndarray, 
+    thresholds: List[float], 
+    colors_bgr: Dict[int, Tuple[int, int, int]], 
+    gradient_colors_bgr: List[Tuple[int, int, int]]
+) -> np.ndarray:
+    segmentation_mask = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
+    for class_id, color in colors_bgr.items():
+        if class_id == 0:
+            continue
+        elif class_id == 4:
+            mask = output_predictions == class_id
+            segmentation_mask[mask & (max_prob < thresholds[0])] = gradient_colors_bgr[0]
+            segmentation_mask[mask & (max_prob >= thresholds[0]) & (max_prob < thresholds[1])] = gradient_colors_bgr[1]
+            segmentation_mask[mask & (max_prob >= thresholds[1])] = gradient_colors_bgr[2]
+        else:
+            mask = output_predictions == class_id
+            segmentation_mask[mask] = color[::-1]
+    return segmentation_mask
+
+def resize_frame(
+    frame: np.ndarray, 
+    window_name: str
+) -> np.ndarray:
+    current_width, current_height = cv2.getWindowImageRect(window_name)[2:4]
+    return cv2.resize(frame, (current_width, current_height))
+
 def process_video(
     video_path: Path, 
     output_video_path: Path, 
     model: nn.Module, 
     device: torch.device, 
     transform: Callable[[Image.Image], Tensor]
-):
-    # 閾値を定義（腫瘍グラデーション）
+) -> None:
     thresholds = [0.85, 0.90, 0.95]
     colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
     gradient_colors_bgr = [rgb_to_bgr(color) for color in GRADIENT_COLORS]
-    cap = cv2.VideoCapture(str(video_path))
-    
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    screen_width, screen_height = get_screen_resolution()
-    cv2.namedWindow('Original vs Segmentation', cv2.WINDOW_NORMAL)
 
-    initial_width = min(screen_width, width * 2)
-    initial_height = int(height * (initial_width / (width * 2)))
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    # ウィンドウを作成し、リサイズ可能に設定
-    cv2.resizeWindow('Original vs Segmentation', initial_width, initial_height)
-
-    # 出力動画のサイズを2倍の幅に設定
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(str(output_video_path), fourcc, fps, (width*2, height))
+    cap, width, height, fps, total_frames = initialize_video(video_path)
+    setup_window(width, height)
+    out = create_video_writer(output_video_path, width, height, fps)
 
     frame_time = 1.0 / fps
     last_process_time = time.time()
@@ -103,69 +174,16 @@ def process_video(
 
         current_time = time.time()
         elapsed_time = current_time - last_process_time
-
         frame_idx += 1
 
         if elapsed_time >= 1.0 or last_segmentation_frame is None:
-            original_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-
             print(f"Processing frame {frame_idx}/{total_frames}")
-
-            img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            input_tensor = transform(img)
-            input_batch = input_tensor.unsqueeze(0).to(device)
-
-            with torch.no_grad():
-                output = model(input_batch)['out']
-
-            output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='bilinear', align_corners=False)
-            output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
-            # リサイズした出力を確率に変換
-            probabilities = F.softmax(output_resized, dim=1)
-            # 確率をCPUに移動し、NumPy配列に変換
-            probabilities = probabilities.cpu().numpy()
-            #最も確率の高い値の取得
-            max_prob = probabilities[0].max(axis=0)
-
-            segmentation_mask = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
-            for class_id, color in colors_bgr.items():
-                if class_id == 0:
-                    continue
-                elif class_id == 4:
-                    mask = output_predictions == class_id
-                    segmentation_mask[mask & (max_prob < thresholds[0])] = gradient_colors_bgr[0]
-                    segmentation_mask[mask & (max_prob >= thresholds[0]) & (max_prob < thresholds[1])] = gradient_colors_bgr[1]
-                    segmentation_mask[mask & (max_prob >= thresholds[1])] = gradient_colors_bgr[2]
-                else:  # Ignore background class
-                    mask = output_predictions == class_id
-                    segmentation_mask[mask] = color[::-1]  # BGRをRGBに変換
-
-            # セグメンテーションマスクをPIL形式に変換
-            segmentation_image = Image.fromarray(segmentation_mask)
-
-            # セグメンテーション結果のサイズを元画像に合わせる
-            segmentation_image_resized = segmentation_image.resize(original_image.size, resample=Image.NEAREST)
-
-            # 元画像とセグメンテーション画像を重ね合わせ
-            blended_image = Image.blend(original_image, segmentation_image_resized, alpha=0.4)
-
-            last_segmentation_frame = cv2.cvtColor(np.array(blended_image), cv2.COLOR_RGB2BGR)
+            last_segmentation_frame = process_frame(frame, model, device, transform, thresholds, colors_bgr, gradient_colors_bgr)
             last_process_time = current_time
 
-        # Use the last segmentation result if we're not processing this frame
-        if last_segmentation_frame is not None:
-            segmentation_frame = last_segmentation_frame
-        else:
-            segmentation_frame = frame  
-
-        # 元の動画とセグメンテーション結果を横に並べる
+        segmentation_frame = last_segmentation_frame if last_segmentation_frame is not None else frame
         combined_frame = np.hstack((frame, cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR)))
-        # 現在のウィンドウサイズを取得
-        current_width = cv2.getWindowImageRect('Original vs Segmentation')[2]
-        current_height = cv2.getWindowImageRect('Original vs Segmentation')[3]
-
-        # ウィンドウサイズに合わせて画像をリサイズ
-        resized_frame = cv2.resize(combined_frame, (current_width, current_height))
+        resized_frame = resize_frame(combined_frame, 'Original vs Segmentation')
 
         cv2.imshow('Original vs Segmentation', resized_frame)
         out.write(combined_frame)
