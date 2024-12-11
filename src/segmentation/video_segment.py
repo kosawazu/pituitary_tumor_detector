@@ -15,6 +15,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from torch import Tensor
 import time
+from screeninfo import get_monitors
 from typing import Callable
 
 sys.path.append("../")
@@ -76,8 +77,15 @@ def process_video(
     
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    screen_width, screen_height = get_screen_resolution()
+    cv2.namedWindow('Original vs Segmentation', cv2.WINDOW_NORMAL)
+
+    initial_width = min(screen_width, width * 2)
+    initial_height = int(height * (initial_width / (width * 2)))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    # ウィンドウを作成し、リサイズ可能に設定
+    cv2.resizeWindow('Original vs Segmentation', initial_width, initial_height)
 
     # 出力動画のサイズを2倍の幅に設定
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -152,9 +160,14 @@ def process_video(
 
         # 元の動画とセグメンテーション結果を横に並べる
         combined_frame = np.hstack((frame, cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR)))
+        # 現在のウィンドウサイズを取得
+        current_width = cv2.getWindowImageRect('Original vs Segmentation')[2]
+        current_height = cv2.getWindowImageRect('Original vs Segmentation')[3]
 
+        # ウィンドウサイズに合わせて画像をリサイズ
+        resized_frame = cv2.resize(combined_frame, (current_width, current_height))
 
-        cv2.imshow('Original vs Segmentation', combined_frame)
+        cv2.imshow('Original vs Segmentation', resized_frame)
         out.write(combined_frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -163,6 +176,15 @@ def process_video(
     cap.release()
     out.release()
     cv2.destroyAllWindows()
+
+def get_screen_resolution():
+    """画面の解像度を取得する関数"""
+    try:
+        monitor = get_monitors()[0]
+        return monitor.width, monitor.height
+    except:
+        # スクリーン情報を取得できない場合はデフォルト値を返す
+        return 1920, 1080
 
 def parse_args():
     # オプションの解析
