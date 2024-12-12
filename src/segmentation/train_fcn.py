@@ -293,7 +293,7 @@ def one_epoch_train(
         
         #trainのiousの計算
         preds = outputs.argmax(1).cpu().numpy()
-        train_iou, train_nan_num_per_cls = calculate_iou(preds, masks, class_num)  # 5クラスの場合
+        train_iou, train_nan_num_per_cls = calculate_iou(preds, masks_resized, class_num)  # 5クラスの場合
         if not train_ious:  # iousが空の場合
             train_ious = train_iou.copy()  # 最初のリストをそのまま代入
             all_train_nan_num_per_cls = train_nan_num_per_cls.copy()
@@ -352,7 +352,7 @@ def eval_dataset_and_save_images(
                     segment_save(seg_img_dir, org_img_dir / image_name, output_prediction)
             
             # 各クラスごとのIoUを計算
-            val_iou, val_nan_num_per_cls = calculate_iou(preds, masks, class_num)  # 5クラスの場合
+            val_iou, val_nan_num_per_cls = calculate_iou(preds, resize_mask, class_num)  # 5クラスの場合
             if not val_ious:  # iousが空の場合
                 val_ious = val_iou.copy()  # 最初のリストをそのまま代入
                 all_val_nan_num_per_cls = val_nan_num_per_cls.copy()
