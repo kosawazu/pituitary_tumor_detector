@@ -204,9 +204,9 @@ def get_test_image_paths_and_labels(
             region_mask = np.array(img_mask)
 
             # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
-            if "sellar" in region['tags']:
+            if "sella" in region['tags']:
                 mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
-            elif "sella" in region['tags']:
+            elif "sellar" in region['tags']:
                 mask = np.maximum(mask, region_mask * 2)  # クラスID 2を使用
             elif "pituitary" in region['tags']:
                 mask = np.maximum(mask, region_mask * 3)  # クラスID 3を使用

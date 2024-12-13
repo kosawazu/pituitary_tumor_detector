@@ -12,6 +12,10 @@ import csv
 from torch.utils.data import Dataset
 from typing import List
 
+from segment_utils.image_processing import(
+    COLORS
+)
+
 # fcn_resnet用
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -19,13 +23,6 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-colors = {
-            0: (0, 0, 255),      # 背景 - 青
-            1: (0, 255, 0),      # sellar - 緑
-            2: (255, 0, 0),      # sella - 赤
-            3: (255, 255, 0),    # pituitary - 黄
-            4: (128, 0, 128)     # tumor - 紫
-        }
 class SegmentationDataset(torch.utils.data.Dataset):
     def __init__(
         self, 
@@ -89,9 +86,9 @@ class SegmentationDataset(torch.utils.data.Dataset):
 
             # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
             #領域が重複している場合はIDが大きい方が処理として優先される。
-            if "sellar" in region['tags']:
+            if "sella" in region['tags']:
                 mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
-            elif "sella" in region['tags']:
+            elif "sellar" in region['tags']:
                 mask = np.maximum(mask, region_mask * 2)  # クラスID 2を使用
             elif "pituitary" in region['tags']:
                 mask = np.maximum(mask, region_mask * 3)  # クラスID 3を使用
@@ -133,7 +130,7 @@ def segment_save(
 
     # カラーマップに基づいて output_predictions を色付け
     output_colored = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
-    for class_index, color in colors.items():
+    for class_index, color in COLORS.items():
         output_colored[output_predictions == class_index] = color
 
     # PIL画像に変換
@@ -180,7 +177,7 @@ def save_blended_image(
 
     # output_predictions からカラー画像を作成
     output_colored = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
-    for class_index, color in colors.items():
+    for class_index, color in COLORS.items():
         if class_index == 0:  # 背景クラスを除く
             continue
         output_colored[output_predictions == class_index] = color
