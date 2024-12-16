@@ -17,7 +17,7 @@ sys.path.append("../")
 # 自作モジュール
 
 from segment_utils.dataset_utils import(
-    transform,
+    get_transform,
 )
 
 from segment_utils.image_processing import(
@@ -35,6 +35,10 @@ from segment_utils.metrics import(
 from utils.model_utils import (
     setup_fcn_model,
     setup_device
+)
+
+from utils.general_utils import (
+    tuple_type
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +59,7 @@ def main(args):
     model_path = model_data_dir / Path("model", f"{model_file}.pth")
     file_names_list = get_test_image_name(test_text_file_path)
     test_image_paths, test_true_labels = get_test_image_paths_and_labels(file_names_list, data_dir)
+    transform = get_transform(args.image_size)
     os.makedirs(segment_save_dir, exist_ok=True)
     os.makedirs(blended_segment_save_dir, exist_ok=True)
     os.makedirs(metrics_segment_save_dir, exist_ok=True)
@@ -87,7 +92,10 @@ def main(args):
             output = model(input_batch)['out']  # FCNの出力
 
         # 各ピクセルに最も確率の高いクラスを割り当てる
-        output_resized = F.interpolate(output, size=test_image_label.shape[-2:], mode='bilinear', align_corners=False)
+        if output.shape[-2:] != test_image_label.shape[-2:]:
+            output_resized = F.interpolate(output, size=test_image_label.shape[-2:], mode='bilinear', align_corners=False)
+        else:
+            output_resized = output
         output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
         ious, nan_num_per_cls = calculate_iou(output_predictions, test_image_label_tensor, num_classes)
         if not all_ious:
@@ -218,8 +226,6 @@ def get_test_image_paths_and_labels(
         labels.append(mask)
 
     return image_paths, labels
-
-
 def parse_args():
     # オプションの解析
     parser = argparse.ArgumentParser(description="骨格データの生成")
@@ -256,6 +262,11 @@ def parse_args():
                         type=int,
                         default=5,
                         help='分類するクラス数'
+                        )
+    parser.add_argument("--image_size",
+                        type=tuple_type,
+                        default=(256, 256),
+                        help='画像サイズ (height, width)'
                         )
     parser.add_argument('--attention_mode', 
                         type=str,

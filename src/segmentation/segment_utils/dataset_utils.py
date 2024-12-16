@@ -1,18 +1,13 @@
 from pathlib import Path
 from torch.utils.data import Dataset, Subset
 from torchvision import transforms
+import torchvision.transforms.functional as F
 import torch
 import json
 import numpy as np
 from PIL import Image, ImageDraw
 from sklearn.model_selection import train_test_split
 from typing import Tuple
-
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
 
 CLASS_MAPPING = {
     0: "background",
@@ -21,7 +16,6 @@ CLASS_MAPPING = {
     3: "pituitary",
     4: "tumor",
 }
-
 
 class SegmentationDataset(Dataset):
     def __init__(
@@ -86,9 +80,9 @@ class SegmentationDataset(Dataset):
 
             # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
             #領域が重複している場合はIDが大きい方が処理として優先される。
-            if "sellar" in region['tags']:
+            if "sella" in region['tags']:
                 mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
-            elif "sella" in region['tags']:
+            elif "sellar" in region['tags']:
                 mask = np.maximum(mask, region_mask * 2)  # クラスID 2を使用
             elif "pituitary" in region['tags']:
                 mask = np.maximum(mask, region_mask * 3)  # クラスID 3を使用
@@ -96,11 +90,12 @@ class SegmentationDataset(Dataset):
                 mask = np.maximum(mask, region_mask * 4)  # クラスID 4を使用
 
         # トランスフォームを適用（もし指定されていれば）
-        if self.transform is not None and isinstance(image, Image.Image):  # PIL.Imageのときのみトランスフォームを適用
-            image = self.transform(image)  # 画像にリサイズ等のトランスフォームを適用
-
-        # マスクもTensorに変換
-        mask = torch.as_tensor(mask, dtype=torch.int64)
+        if self.transform is not None:
+            image, mask = self.transform(image, mask)
+        else:
+            # トランスフォームがない場合のデフォルト処理
+            image = F.to_tensor(image)
+            mask = torch.as_tensor(mask, dtype=torch.int64)
 
         return image, mask, img_filename
 
@@ -109,15 +104,57 @@ class SegmentationDataset(Dataset):
         """
         データセットのtransformに設定されたNormalizeのmeanとstdを返すメソッド
         """
-        if self.transform is not None:
-            for t in self.transform.transforms:  # Compose内のtransformsリストを確認
-                if isinstance(t, transforms.Normalize):
-                    return t.mean, t.std
-        return None, None  # Normalizeが見つからない場合
+        if self.transform is not None and isinstance(self.transform, SegmentationTransform):
+            return self.transform.get_normalize_params()
+        return None, None  # SegmentationTransformが設定されていない場合
     
 class SubsetWithAttributes(Subset):
     def __getattr__(self, attr):
         return getattr(self.dataset, attr)
+    
+
+class SegmentationTransform:
+    def __init__(self, image_size: Tuple[int, int], is_train: bool = True):
+        self.image_size = image_size
+        self.is_train = is_train
+        self.normalize_mean = [0.485, 0.456, 0.406]
+        self.normalize_std = [0.229, 0.224, 0.225]
+
+    def __call__(self, image: Image.Image, mask: np.ndarray = None):
+        # 画像のリサイズ
+        image = F.resize(image, self.image_size, interpolation=F.InterpolationMode.BILINEAR)
+
+        if self.is_train and mask is not None:
+            # マスクのリサイズ
+            mask = F.resize(Image.fromarray(mask), self.image_size, interpolation=F.InterpolationMode.NEAREST)
+            mask = np.array(mask)
+
+            # データ拡張（トレーニング時のみ）
+            if torch.rand(1) < 0.5:
+                image = F.hflip(image)
+                mask = np.fliplr(mask).copy()
+            
+            # 画像の明るさ、コントラスト、彩度の調整
+            image = F.adjust_brightness(image, brightness_factor=torch.rand(1).item() * 0.2 + 0.9)
+            image = F.adjust_contrast(image, contrast_factor=torch.rand(1).item() * 0.2 + 0.9)
+            image = F.adjust_saturation(image, saturation_factor=torch.rand(1).item() * 0.2 + 0.9)
+
+        # 画像をTensorに変換し、正規化
+        image = F.to_tensor(image)
+        image = F.normalize(image, mean=self.normalize_mean, std=self.normalize_std)
+
+        if mask is not None:
+            # マスクをTensorに変換
+            mask = torch.as_tensor(mask.copy(), dtype=torch.int64)
+            return image, mask
+        else:
+            return image
+
+    def get_normalize_params(self):
+        return self.normalize_mean, self.normalize_std
+
+def get_transform(image_size: Tuple[int, int], is_train: bool = False) -> SegmentationTransform:
+    return SegmentationTransform(image_size, is_train)
     
 def save_filenames(dataset, indices, filepath):
     """

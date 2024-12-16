@@ -19,7 +19,7 @@ sys.path.append("../")
 
 #データセット関連
 from segment_utils.dataset_utils import(
-    transform,
+    get_transform,
     SegmentationDataset,
     split_dataset,
     CLASS_MAPPING
@@ -55,6 +55,9 @@ from utils.training_utils import (
 from utils.set_seed import (
     seed_everything
 )
+from utils.general_utils import (
+    tuple_type
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +85,7 @@ def main(args):
     model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model)
-
+    transform = get_transform(args.image_size)
     # データセットの作成
     dataset = SegmentationDataset(mask_dir, train_image_dir, transform)
     #データ数の確認
@@ -369,8 +372,16 @@ def eval_dataset_and_save_images(
 
 def resize_mask(
     mask: torch.Tensor,
-    output_size: Tuple[int, int]  # モデルの出力サイズを引数に追加
+    output_size: Tuple[int, int]
 ) -> torch.Tensor:
+    # マスクの現在のサイズを取得
+    current_size = mask.shape[-2:]
+    
+    # 現在のサイズと目標サイズが同じ場合、マスクをそのまま返す
+    if current_size == output_size:
+        return mask
+    
+    # サイズが異なる場合のみリサイズを実行
     return F.interpolate(mask.unsqueeze(1).float(), size=output_size, mode='nearest').squeeze(1).long()
 
 def parse_args():
@@ -418,6 +429,11 @@ def parse_args():
                         type=int,
                         default=5,
                         help='分類するクラス数'
+                        )
+    parser.add_argument("--image_size",
+                        type=tuple_type,
+                        default=(256, 256),
+                        help='画像サイズ (height, width)'
                         )
     parser.add_argument('--attention_mode', 
                         type=str,
