@@ -4,6 +4,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import torch
+from typing import Tuple
 
 COLORS = {
     0: (0, 0, 255),
@@ -123,8 +124,9 @@ def save_blended_image_with_class4_gradient(
     # 元画像の読み込み
     original_image = Image.open(original_image_path).convert('RGB')
 
-    # モデルの出力を元画像のサイズにリサイズ
-    output_resized = F.interpolate(output, size=(original_image.height, original_image.width), mode='bilinear', align_corners=False)
+    # # モデルの出力を元画像のサイズにリサイズ
+    # output_resized = F.interpolate(output, size=(original_image.height, original_image.width), mode='bilinear', align_corners=False)
+    output_resized = F.interpolate(output, size=(original_image.height, original_image.width), mode='nearest')
 
     # リサイズした出力を確率に変換
     probabilities = F.softmax(output_resized, dim=1)
@@ -170,4 +172,22 @@ def save_blended_image_with_class4_gradient(
 
     print(f"Blended image with class 4 gradient saved to {save_path}")
 
+def resize_mask(
+    mask: torch.Tensor,
+    output_size: Tuple[int, int]
+) -> torch.Tensor:
+    # マスクの現在のサイズを取得
+    current_size = mask.shape[-2:]
+    
+    # 現在のサイズと目標サイズが同じ場合、マスクをそのまま返す
+    if current_size == output_size:
+        return mask
+    
+    # 入力テンソルの次元数を確認
+    if mask.dim() == 4:  # (N, C, H, W)
+        return F.interpolate(mask.float(), size=output_size, mode='nearest').long()
+    elif mask.dim() == 3:  # (C, H, W)
+        return F.interpolate(mask.unsqueeze(0).float(), size=output_size, mode='nearest').squeeze(0).long()
+    else:
+        raise ValueError(f"Unexpected input shape: {mask.shape}")
 

@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix
-
+import math
 from typing import Tuple, List
 sys.path.append("../")
 # 自作モジュール
@@ -23,13 +23,16 @@ from segment_utils.dataset_utils import(
 from segment_utils.image_processing import(
     segment_save,
     save_blended_image,
-    save_blended_image_with_class4_gradient
+    save_blended_image_with_class4_gradient,
+    resize_mask
 )
 
 from segment_utils.metrics import(
     save_iou_to_csv,
     save_confusion_matrix_with_metrics,
-    calculate_iou
+    calculate_iou,
+    update_ious_and_counts,
+    calculate_average_ious_and_miou
 )
 
 from utils.model_utils import (
@@ -79,7 +82,7 @@ def main(args):
     all_ground_truths = []
     all_predictions = []
     all_ious = []
-    all_nan_num_per_cls = [] #クラスごとのnanの個数
+    all_iou_counts = []
     for test_image_path, test_image_label in zip(test_image_paths, test_true_labels):
         test_image_label_tensor = torch.tensor(test_image_label, device=device)
         # 入力画像を読み込み、前処理
@@ -92,18 +95,13 @@ def main(args):
             output = model(input_batch)['out']  # FCNの出力
 
         # 各ピクセルに最も確率の高いクラスを割り当てる
-        if output.shape[-2:] != test_image_label.shape[-2:]:
-            output_resized = F.interpolate(output, size=test_image_label.shape[-2:], mode='bilinear', align_corners=False)
-        else:
-            output_resized = output
+        output_resized = resize_mask(output, test_image_label.shape[-2:])
         output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
-        ious, nan_num_per_cls = calculate_iou(output_predictions, test_image_label_tensor, num_classes)
-        if not all_ious:
-            all_ious = ious.copy()  # 初回は直接設定
-            all_nan_num_per_cls = nan_num_per_cls.copy()
-        else:
-            all_ious = [x + y for x, y in zip(all_ious, ious)]  # 2回目以降は加算
-            all_nan_num_per_cls = [x + y for x, y in zip(all_nan_num_per_cls, nan_num_per_cls)]  # 2回目以降は加算
+        ious = calculate_iou(output_predictions, test_image_label_tensor, num_classes)
+        logger.info(f"{test_image_path=}")
+        logger.info(f"{ious=}")
+        all_ious, all_iou_counts = update_ious_and_counts(all_ious, all_iou_counts, ious)
+
         # ピクセルごとに予測ラベルと正解ラベルをフラットにする
         all_ground_truths.append(test_image_label.flatten())
         all_predictions.append(output_predictions.flatten())
@@ -116,16 +114,7 @@ def main(args):
     # すべての画像の正解ラベルと予測ラベルをまとめる
     all_ground_truths = np.concatenate(all_ground_truths)
     all_predictions = np.concatenate(all_predictions)
-
-    #それぞれのiouの平均
-    num_effective_ious = [len(test_image_paths) - count for count in all_nan_num_per_cls]
-    logger.info(f"{all_nan_num_per_cls=}")
-    logger.info(f"{num_effective_ious=}")
-    avg_ious = [
-    iou /  count if count > 0 else float('nan')  # countが0ならNaN
-    for iou, count in zip(all_ious, num_effective_ious)
-    ]
-    miou = np.nanmean(avg_ious)
+    avg_ious, miou = calculate_average_ious_and_miou(all_ious)
     logger.info(f"{avg_ious=}")
     logger.info(f"{miou=}")
     # ピクセル単位の混同行列を作成

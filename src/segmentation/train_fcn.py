@@ -26,11 +26,14 @@ from segment_utils.dataset_utils import(
 )
 # 画像処理関連
 from segment_utils.image_processing import(
-    segment_save
+    segment_save,
+    resize_mask
 )
 # 評価関連
 from segment_utils.metrics import(
-    calculate_iou
+    calculate_iou,
+    update_ious_and_counts,
+    calculate_average_ious_and_miou
 )
 # グラフ
 from segment_utils.graph import(
@@ -138,7 +141,8 @@ def save_best_model(
     best_metric: float, 
     model_dir: Path, 
     file_name: Path, 
-    is_higher_better: bool
+    is_higher_better: bool,
+    metric_name
 ) -> float:
     """
     最良のモデルを保存する
@@ -158,9 +162,9 @@ def save_best_model(
         torch.save(model.state_dict(), file_path)
         metric_name = file_name.split('_')[1]  # 'best_loss_model.pth' から 'loss' を抽出
         save_epoch_info(model_dir, metric_name, epoch)
-        logger.info(f"モデルを保存しました: {file_path=} （{metric=}, {best_metric=}）")
+        logger.info(f"{metric_name}の最良モデルを保存しました: {file_path=} （{metric=}, {best_metric=}）")
     else:
-        logger.info(f"モデルは保存されませんでした。現行の最良値を維持します。 （{metric=}, {best_metric=})")
+        logger.info(f"{metric_name}のモデルは保存されませんでした。現行の最良値を維持します。 （{metric=}, {best_metric=})")
 
     return best_metric
 
@@ -179,7 +183,8 @@ def save_best_models(
             best_metrics[metric_name], 
             model_dir, 
             f'best_{metric_name}_model.pth', 
-            is_higher_better
+            is_higher_better,
+            metric_name
         )
     return best_metrics
 
@@ -223,25 +228,24 @@ def train_model(
             segment_dir / f"epoch_{epoch+1}",
             data_dir
             )                     
-
+        tarin_avg_ious, train_miou = calculate_average_ious_and_miou(train_ious)
+        val_avg_ious, val_miou = calculate_average_ious_and_miou(val_ious)
         # 最良モデルの保存
         index_mapping = {v: k for k, v in CLASS_MAPPING.items()}
         tumor_index = index_mapping["tumor"]
-        tumor_ious_score = val_ious[tumor_index]
-        train_mean_iou = torch.tensor(train_ious).mean(dim=0).tolist()
-        val_mean_iou = torch.tensor(val_ious).mean(dim=0).tolist()  # クラスごとの平均
+        tumor_ious_score = val_avg_ious[tumor_index]
         evaluation_metrics  = {
                     "loss": val_loss,
                     "tumor_iou": tumor_ious_score,
-                    "mean_iou": val_mean_iou
+                    "mean_iou": val_miou
         }      
         best_metrics = save_best_models(epoch, model, evaluation_metrics, best_metrics, model_save_dir)
         train_losses.append(epoch_loss)
         valid_losses.append(val_loss)
-        epoch_train_ious.append(train_ious)
-        epoch_val_ious.append(val_ious)
-        epoch_train_miou.append(train_mean_iou)
-        epoch_val_miou.append(val_mean_iou)
+        epoch_train_ious.append(tarin_avg_ious)
+        epoch_val_ious.append(val_avg_ious)
+        epoch_train_miou.append(train_miou)
+        epoch_val_miou.append(val_miou)
         # logger.info(f'Epoch [{epoch+1}/{epochs}] | Loss: Train {epoch_loss}, Validation {val_loss}\n')
 
         # 学習曲線をプロット
@@ -269,7 +273,7 @@ def one_epoch_train(
     """          
     running_loss = 0.0
     train_ious = []
-    all_train_nan_num_per_cls = [] #クラスごとのnanの個数
+    train_all_iou_counts = [] #クラスごとのnanの個数
     model.train()
     for images, masks, _ in train_loader:
         images = images.to(device)
@@ -296,19 +300,10 @@ def one_epoch_train(
         
         #trainのiousの計算
         preds = outputs.argmax(1).cpu().numpy()
-        train_iou, train_nan_num_per_cls = calculate_iou(preds, masks_resized, class_num)  # 5クラスの場合
-        if not train_ious:  # iousが空の場合
-            train_ious = train_iou.copy()  # 最初のリストをそのまま代入
-            all_train_nan_num_per_cls = train_nan_num_per_cls.copy()
-        else:
-            train_ious = [x + y for x, y in zip(train_ious, train_iou)]  # 要素ごとに加算
-            all_train_nan_num_per_cls = [x + y for x, y in zip(all_train_nan_num_per_cls, train_nan_num_per_cls)]  # 2回目以降は加算
+        train_iou = calculate_iou(preds, masks_resized, class_num)  # 5クラスの場合
+        train_ious, train_all_iou_counts = update_ious_and_counts(train_ious, train_all_iou_counts, train_iou)
     epoch_loss = running_loss / len(train_loader)
-    train_num_effective_ious = [len(train_loader) - count for count in all_train_nan_num_per_cls]
-    train_ious = [
-    iou /  count if count > 0 else float('nan')  # countが0ならNaN
-    for iou, count in zip(train_ious, train_num_effective_ious)
-    ]
+    
     logger.debug(f"data_loader_length:{len(train_loader)}")
     logger.info(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss/len(train_loader)}")
 
@@ -328,7 +323,7 @@ def eval_dataset_and_save_images(
 
     running_loss = 0.
     val_ious = []
-    all_val_nan_num_per_cls = [] #クラスごとのnanの個数
+    val_all_iou_counts = [] #クラスごとのnanの個数
     model.eval()
     with torch.no_grad():
         for images, masks, image_names in data_loader:
@@ -355,34 +350,10 @@ def eval_dataset_and_save_images(
                     segment_save(seg_img_dir, org_img_dir / image_name, output_prediction)
             
             # 各クラスごとのIoUを計算
-            val_iou, val_nan_num_per_cls = calculate_iou(preds, masks_resized, class_num)  # 5クラスの場合
-            if not val_ious:  # iousが空の場合
-                val_ious = val_iou.copy()  # 最初のリストをそのまま代入
-                all_val_nan_num_per_cls = val_nan_num_per_cls.copy()
-            else:
-                val_ious = [x + y for x, y in zip(val_ious, val_iou)]  # 要素ごとに加算
-                all_val_nan_num_per_cls = [x + y for x, y in zip(all_val_nan_num_per_cls, val_nan_num_per_cls)]  # 2回目以降は加算
-        val_num_effective_ious = [len(data_loader) - count for count in all_val_nan_num_per_cls]
-        val_ious = [iou / len(data_loader) for iou in val_ious]
-        val_ious = [
-        iou /  count if count > 0 else float('nan')  # countが0ならNaN
-        for iou, count in zip(val_ious, val_num_effective_ious)
-        ]
-    return running_loss / len(data_loader), val_ious
+            val_iou = calculate_iou(preds, masks_resized, class_num)  # 5クラスの場合
+            val_ious, val_all_iou_counts = update_ious_and_counts(val_ious, val_all_iou_counts, val_iou)
 
-def resize_mask(
-    mask: torch.Tensor,
-    output_size: Tuple[int, int]
-) -> torch.Tensor:
-    # マスクの現在のサイズを取得
-    current_size = mask.shape[-2:]
-    
-    # 現在のサイズと目標サイズが同じ場合、マスクをそのまま返す
-    if current_size == output_size:
-        return mask
-    
-    # サイズが異なる場合のみリサイズを実行
-    return F.interpolate(mask.unsqueeze(1).float(), size=output_size, mode='nearest').squeeze(1).long()
+    return running_loss / len(data_loader), val_ious
 
 def parse_args():
     # オプションの解析
