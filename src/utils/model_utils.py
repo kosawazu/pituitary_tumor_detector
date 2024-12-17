@@ -8,6 +8,7 @@ from utils.attention_layers import (
     SelfAttention,
     ChannelAttention
 )
+from utils.botnet import fcn_bot_resnet101
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,8 @@ def setup_fcn_model(
     model_dict = {
     "fcn_resnet50":models.segmentation.fcn_resnet50(pretrained=True),
     "fcn_resnet101":models.segmentation.fcn_resnet101(pretrained=True),
-    "deeplabv3_resnet101":models.segmentation.deeplabv3_resnet101(pretrained=True)
+    "deeplabv3_resnet101":models.segmentation.deeplabv3_resnet101(pretrained=True),
+    "fcn_bot_resnet101":fcn_bot_resnet101(num_classes)
     }
     if model_name not in model_dict:
         raise ValueError(f"Invalid model_name '{model_name}'.")
@@ -61,30 +63,47 @@ def tune_model(
     attention_mode: str,
     num_classes: int = 3
 ) -> nn.Module:
-    self_attention = SelfAttention(2048)  # layer4の出力チャンネル数は2048
-    channel_attention = ChannelAttention(2048)
-
-    if model_name == "deeplabv3_resnet101":
-        model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
-        model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
-    elif "resnet" in model_name:
-        model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
+    
+    if model_name == "fcn_bot_resnet101":
+        # BoTNetのlayer3以降を学習可能に設定
+        for param in model.encoder.layer1.parameters():
+            param.requires_grad = False
+        for param in model.encoder.layer2.parameters():
+            param.requires_grad = False
+        
+        # layer3とlayer4は学習可能
+        for param in model.encoder.layer3.parameters():
+            param.requires_grad = True
+        for param in model.encoder.layer4.parameters():
+            param.requires_grad = True
+        
+        # デコーダーの出力層をnum_classesに合わせて調整
+        model.decoder.final_conv = nn.Conv2d(64, num_classes, kernel_size=1)
     else:
-        raise ValueError(f"Unsupported model: {model_name}")
+        self_attention = SelfAttention(2048)  # layer4の出力チャンネル数は2048
+        channel_attention = ChannelAttention(2048)
 
-    # アテンションモードに基づいてbackbone.layer4を設定
-    original_layer4 = model.backbone.layer4
+        if model_name == "deeplabv3_resnet101":
+            model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
+            model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
+        elif "resnet" in model_name:
+            model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
+        else:
+            raise ValueError(f"Unsupported model: {model_name}")
 
-    if attention_mode == "none":
-        model.backbone.layer4 = nn.Sequential(original_layer4)
-    elif attention_mode == "self_attention":
-        model.backbone.layer4 = nn.Sequential(original_layer4, self_attention)
-    elif attention_mode == "channel_attention":
-        model.backbone.layer4 = nn.Sequential(channel_attention, original_layer4)
-    elif attention_mode == "both":
-        model.backbone.layer4 = nn.Sequential(channel_attention, original_layer4, self_attention)
-    else:
-        raise ValueError(f"Invalid attention mode: {attention_mode}")
+        # アテンションモードに基づいてbackbone.layer4を設定
+        original_layer4 = model.backbone.layer4
+
+        if attention_mode == "none":
+            model.backbone.layer4 = nn.Sequential(original_layer4)
+        elif attention_mode == "self_attention":
+            model.backbone.layer4 = nn.Sequential(original_layer4, self_attention)
+        elif attention_mode == "channel_attention":
+            model.backbone.layer4 = nn.Sequential(channel_attention, original_layer4)
+        elif attention_mode == "both":
+            model.backbone.layer4 = nn.Sequential(channel_attention, original_layer4, self_attention)
+        else:
+            raise ValueError(f"Invalid attention mode: {attention_mode}")
 
     return model
 
