@@ -86,9 +86,9 @@ class SegmentationDataset(torch.utils.data.Dataset):
 
             # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
             #領域が重複している場合はIDが大きい方が処理として優先される。
-            if "sella" in region['tags']:
+            if "sellar" in region['tags']:
                 mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
-            elif "sellar" in region['tags']:
+            elif "sella" in region['tags']:
                 mask = np.maximum(mask, region_mask * 2)  # クラスID 2を使用
             elif "pituitary" in region['tags']:
                 mask = np.maximum(mask, region_mask * 3)  # クラスID 3を使用
