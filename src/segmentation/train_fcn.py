@@ -284,7 +284,9 @@ def one_epoch_train(
         optimizer.zero_grad()
 
         # モデルの出力
-        outputs = model(images)['out']
+        outputs = model(images)
+        if isinstance(outputs, dict):
+            outputs = outputs['out']
         logger.debug(f"モデルの出力値のサイズ:{outputs.shape}")
         output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
         masks_resized = resize_mask(masks, output_size)  # リサイズする
@@ -332,7 +334,9 @@ def eval_dataset_and_save_images(
             # # 勾配の初期化
             # optimizer.zero_grad()
             # 順伝播
-            outputs = model(images)['out']
+            outputs = model(images)
+            if isinstance(outputs, dict):
+                outputs = outputs['out']
             
             # 損失の計算
             output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
@@ -381,8 +385,8 @@ def parse_args():
     parser.add_argument("--model_name",
                         type=str,
                         default="fcn_resnet50",
-                        choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19", "deeplabv3_resnet101"],
-                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19, deeplabv3_resnet101."
+                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "fcn_bot_resnet101"],
+                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101."
                         )
     parser.add_argument("--batch_size",
                         type=int,
