@@ -254,7 +254,7 @@ def parse_args():
                         )
     parser.add_argument("--image_size",
                         type=tuple_type,
-                        default=(256, 256),
+                        default=(224, 224),
                         help='画像サイズ (height, width)'
                         )
     parser.add_argument('--attention_mode', 
