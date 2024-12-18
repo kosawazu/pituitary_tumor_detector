@@ -76,9 +76,6 @@ def tune_model(
             param.requires_grad = True
         for param in model.encoder.layer4.parameters():
             param.requires_grad = True
-        
-        # デコーダーの出力層をnum_classesに合わせて調整
-        model.decoder.final_conv = nn.Conv2d(64, num_classes, kernel_size=1)
     else:
         self_attention = SelfAttention(2048)  # layer4の出力チャンネル数は2048
         channel_attention = ChannelAttention(2048)
