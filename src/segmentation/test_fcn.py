@@ -92,14 +92,14 @@ def main(args):
 
         # 推論
         with torch.no_grad():
-            output = model(input_batch)['out']  # FCNの出力
+            output = model(input_batch)
+            if isinstance(output, dict):
+                output = output['out']
 
         # 各ピクセルに最も確率の高いクラスを割り当てる
         output_resized = resize_mask(output, test_image_label.shape[-2:])
         output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
         ious = calculate_iou(output_predictions, test_image_label_tensor, num_classes)
-        logger.info(f"{test_image_path=}")
-        logger.info(f"{ious=}")
         all_ious, all_iou_counts = update_ious_and_counts(all_ious, all_iou_counts, ious)
 
         # ピクセルごとに予測ラベルと正解ラベルをフラットにする
@@ -232,8 +232,8 @@ def parse_args():
     parser.add_argument("--model_name",
                         type=str,
                         default="fcn_resnet50",
-                        choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19", "deeplabv3_resnet101"],
-                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19, deeplabv3_resnet101."
+                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "fcn_bot_resnet101"],
+                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101."
                         )
     parser.add_argument("--save_model_file",
                         type=str,
