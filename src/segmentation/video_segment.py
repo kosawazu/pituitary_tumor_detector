@@ -189,30 +189,48 @@ def process_video(
     last_process_time = time.time()
     frame_idx = 0
     last_segmentation_frame = None
+    is_paused = False
 
     while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
+        if not is_paused:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            current_time = time.time()
+            elapsed_time = current_time - last_process_time
+            frame_idx += 1
+
+            if elapsed_time >= 1.0 or last_segmentation_frame is None:
+                print(f"Processing frame {frame_idx}/{total_frames}")
+                last_segmentation_frame = process_frame(frame, model, device, transform, thresholds, colors_bgr, gradient_colors_bgr)
+                last_process_time = current_time
+
+            segmentation_frame = last_segmentation_frame if last_segmentation_frame is not None else frame
+            combined_frame = np.hstack((frame, cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR)))
+            resized_frame = resize_frame(combined_frame, 'Original vs Segmentation')
+
+            cv2.imshow('Original vs Segmentation', resized_frame)
+            out.write(combined_frame)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             break
-
-        current_time = time.time()
-        elapsed_time = current_time - last_process_time
-        frame_idx += 1
-
-        if elapsed_time >= 1.0 or last_segmentation_frame is None:
-            print(f"Processing frame {frame_idx}/{total_frames}")
-            last_segmentation_frame = process_frame(frame, model, device, transform, thresholds, colors_bgr, gradient_colors_bgr)
-            last_process_time = current_time
-
-        segmentation_frame = last_segmentation_frame if last_segmentation_frame is not None else frame
-        combined_frame = np.hstack((frame, cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR)))
-        resized_frame = resize_frame(combined_frame, 'Original vs Segmentation')
-
-        cv2.imshow('Original vs Segmentation', resized_frame)
-        out.write(combined_frame)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        elif key == 32:  # スペースキーのASCIIコード
+            is_paused = not is_paused
+            print("Paused" if is_paused else "Resumed")
+        elif key == ord('n') and is_paused:
+            # 一時停止中に'n'キーを押すと次のフレームに進む
+            ret, frame = cap.read()
+            if ret:
+                frame_idx += 1
+                print(f"Advancing to frame {frame_idx}/{total_frames}")
+                last_segmentation_frame = process_frame(frame, model, device, transform, thresholds, colors_bgr, gradient_colors_bgr)
+                segmentation_frame = last_segmentation_frame
+                combined_frame = np.hstack((frame, cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR)))
+                resized_frame = resize_frame(combined_frame, 'Original vs Segmentation')
+                cv2.imshow('Original vs Segmentation', resized_frame)
+                out.write(combined_frame)
 
     cap.release()
     out.release()
