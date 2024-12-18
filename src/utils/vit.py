@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
-class ViTSegmentation(nn.Module):
+class vit_segmentation(nn.Module):
     def __init__(self, num_classes):
-        super(ViTSegmentation, self).__init__()
+        super(vit_segmentation, self).__init__()
         
         # ViT-Base モデルをロード（事前学習済み）
         self.vit = models.vit_b_16(pretrained=True)

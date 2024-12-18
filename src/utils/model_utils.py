@@ -4,11 +4,14 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torchvision import models
+
+#自作モジュールのimport
 from utils.attention_layers import (
     SelfAttention,
     ChannelAttention
 )
 from utils.botnet import fcn_bot_resnet101
+from utils.vit import vit_segmentation
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +52,8 @@ def setup_fcn_model(
     "fcn_resnet50":models.segmentation.fcn_resnet50(pretrained=True),
     "fcn_resnet101":models.segmentation.fcn_resnet101(pretrained=True),
     "deeplabv3_resnet101":models.segmentation.deeplabv3_resnet101(pretrained=True),
-    "fcn_bot_resnet101":fcn_bot_resnet101(num_classes)
+    "fcn_bot_resnet101":fcn_bot_resnet101(num_classes),
+    "vit_b_16_segmentation":vit_segmentation(num_classes)
     }
     if model_name not in model_dict:
         raise ValueError(f"Invalid model_name '{model_name}'.")
@@ -76,6 +80,8 @@ def tune_model(
             param.requires_grad = True
         for param in model.encoder.layer4.parameters():
             param.requires_grad = True
+    elif model_name == "vit_b_16_segmentation":
+        pass
     else:
         self_attention = SelfAttention(2048)  # layer4の出力チャンネル数は2048
         channel_attention = ChannelAttention(2048)
