@@ -160,7 +160,7 @@ def calculate_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int) ->
             else:
                 raise ValueError(f"Unexpected case: intersection > 0 but union == 0 for class {cls}")
         elif intersection == 0:
-            ious.append(0.0)  # 片方にしか存在しない
+            ious.append(float('nan'))  # 片方にしか存在しない
         else:
             ious.append(intersection / union)
     
