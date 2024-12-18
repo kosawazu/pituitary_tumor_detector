@@ -153,6 +153,8 @@ def calculate_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int) ->
         
         intersection = (pred_inds & target_inds).sum().float().item()
         union = (pred_inds | target_inds).sum().float().item()
+        pred_sum = pred_inds.sum().float().item()
+        target_sum = target_inds.sum().float().item()
         
         if union == 0:
             if intersection == 0:
@@ -160,7 +162,10 @@ def calculate_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int) ->
             else:
                 raise ValueError(f"Unexpected case: intersection > 0 but union == 0 for class {cls}")
         elif intersection == 0:
-            ious.append(float('nan'))  # 片方にしか存在しない
+            if target_sum > 0:
+                ious.append(0.0)  # 正解にしか存在しない
+            else:
+                ious.append(float('nan'))  # 予測にしか存在しない
         else:
             ious.append(intersection / union)
     
