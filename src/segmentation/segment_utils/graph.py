@@ -33,7 +33,7 @@ def plot_and_save_iou_curve(
     epoch_train_ious: List[List[float]],
     epoch_val_ious: List[List[float]],
     num_classes: int,
-    graph_save_dir: Path
+    graph_path: Path
 ) -> None:
     # IoU曲線のプロット
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))  # 2つのサブプロットを横に並べる
@@ -64,5 +64,5 @@ def plot_and_save_iou_curve(
     plt.tight_layout()  # サブプロット間のスペースを自動調整
 
     # IoU曲線をファイルに保存
-    plt.savefig(graph_save_dir / Path("iou_per_epoch_curve.png"))
+    plt.savefig(graph_path)
     plt.close()

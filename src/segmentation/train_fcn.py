@@ -33,7 +33,8 @@ from segment_utils.image_processing import(
 from segment_utils.metrics import(
     calculate_iou,
     update_ious_and_counts,
-    calculate_average_ious_and_miou
+    calculate_average_ious_and_miou,
+    calculate_iou_and_miou_from_confusion_matrix
 )
 # グラフ
 from segment_utils.graph import(
@@ -213,13 +214,17 @@ def train_model(
     epoch_val_ious = []
     epoch_train_miou = []
     epoch_val_miou = []
+    epoch_train_ious_from_confusion_matrix = []
+    epoch_val_ious_from_confusion_matrix = []
+    epoch_train_miou_from_confusion_matrix = []
+    epoch_val_miou_from_confusion_matrix = []
     best_metrics = {"loss": float('inf'), "tumor_iou": 0.0, "mean_iou": 0.0}
     for epoch in range(epochs):
         # 各エポックの損失をリストに追加
-        epoch_loss, train_ious = one_epoch_train(train_loader, device, optimizer, model, criterion, epoch, epochs, class_num)
+        epoch_loss, train_ious, train_confusion_matrix = one_epoch_train(train_loader, device, optimizer, model, criterion, epoch, epochs, class_num)
 
         # 検証用データ
-        val_loss, val_ious = eval_dataset_and_save_images(
+        val_loss, val_ious, val_confusion_matrix = eval_dataset_and_save_images(
             valid_loader, 
             device, 
             model, 
@@ -228,6 +233,8 @@ def train_model(
             segment_dir / f"epoch_{epoch+1}",
             data_dir
             )                     
+        train_iou_from_matrix, train_miou_from_matrix = calculate_iou_and_miou_from_confusion_matrix(train_confusion_matrix, class_num)
+        val_iou_from_matrix, val_miou_from_matrix = calculate_iou_and_miou_from_confusion_matrix(val_confusion_matrix, class_num)
         tarin_avg_ious, train_miou = calculate_average_ious_and_miou(train_ious)
         val_avg_ious, val_miou = calculate_average_ious_and_miou(val_ious)
         # 最良モデルの保存
@@ -246,12 +253,18 @@ def train_model(
         epoch_val_ious.append(val_avg_ious)
         epoch_train_miou.append(train_miou)
         epoch_val_miou.append(val_miou)
+        epoch_train_ious_from_confusion_matrix.append(train_iou_from_matrix)
+        epoch_val_ious_from_confusion_matrix.append(val_iou_from_matrix)
+        epoch_train_miou_from_confusion_matrix.append(train_miou_from_matrix)
+        epoch_val_miou_from_confusion_matrix.append(val_miou_from_matrix)
         # logger.info(f'Epoch [{epoch+1}/{epochs}] | Loss: Train {epoch_loss}, Validation {val_loss}\n')
 
         # 学習曲線をプロット
         plot_and_save_metrics_curve(epoch+1, train_losses, valid_losses, "Loss", graph_save_dir / Path("training_loss_curve.png"))
         plot_and_save_metrics_curve(epoch+1, epoch_train_miou, epoch_val_miou, "MIOU", graph_save_dir / Path("training_miou_curve.png"))
-        plot_and_save_iou_curve(epoch+1, epoch_train_ious, epoch_val_ious, class_num, graph_save_dir)
+        plot_and_save_metrics_curve(epoch+1, epoch_train_miou_from_confusion_matrix, epoch_val_miou_from_confusion_matrix, "MIOU", graph_save_dir / Path("training_miou_curve_from_confusion_matrix.png"))
+        plot_and_save_iou_curve(epoch+1, epoch_train_ious, epoch_val_ious, class_num, graph_save_dir / Path("training_iou_curve.png"))
+        plot_and_save_iou_curve(epoch+1, epoch_train_ious_from_confusion_matrix, epoch_val_ious_from_confusion_matrix, class_num, graph_save_dir / Path("training_iou_curve_from_confusion_matrix.png"))
 
         if early_stopping(val_loss):
             logger.info(f"Early stopping triggered at epoch {epoch+1}")
@@ -274,6 +287,8 @@ def one_epoch_train(
     running_loss = 0.0
     train_ious = []
     train_all_iou_counts = [] #クラスごとのnanの個数
+    all_preds = []
+    all_targets = []
     model.train()
     for images, masks, _ in train_loader:
         images = images.to(device)
@@ -304,12 +319,15 @@ def one_epoch_train(
         preds = outputs.argmax(1).cpu().numpy()
         train_iou = calculate_iou(preds, masks_resized, class_num)  # 5クラスの場合
         train_ious, train_all_iou_counts = update_ious_and_counts(train_ious, train_all_iou_counts, train_iou)
+        all_preds.extend(preds.flatten())
+        all_targets.extend(masks_resized.cpu().numpy().flatten())
     epoch_loss = running_loss / len(train_loader)
-    
+    # 混同行列の計算
+    conf_matrix = confusion_matrix(all_targets, all_preds, labels=range(class_num))
     logger.debug(f"data_loader_length:{len(train_loader)}")
     logger.info(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss/len(train_loader)}")
 
-    return epoch_loss, train_ious
+    return epoch_loss, train_ious, conf_matrix
 
 def eval_dataset_and_save_images(
     data_loader: DataLoader,   
@@ -326,6 +344,8 @@ def eval_dataset_and_save_images(
     running_loss = 0.
     val_ious = []
     val_all_iou_counts = [] #クラスごとのnanの個数
+    all_preds = []
+    all_targets = []
     model.eval()
     with torch.no_grad():
         for images, masks, image_names in data_loader:
@@ -344,9 +364,10 @@ def eval_dataset_and_save_images(
             loss = criterion(outputs, masks_resized.long())
 
             running_loss += loss.item()
-
+            preds = outputs.argmax(1).cpu().numpy()
+            all_preds.extend(preds.flatten())
+            all_targets.extend(masks_resized.cpu().numpy().flatten())
             if seg_img_dir is not None:
-                preds = outputs.argmax(1).cpu().numpy()
                 # 各画像に対してセグメント化結果を保存
                 for i in range(images.size(0)):
                     image_name = image_names[i]
@@ -356,8 +377,10 @@ def eval_dataset_and_save_images(
             # 各クラスごとのIoUを計算
             val_iou = calculate_iou(preds, masks_resized, class_num)  # 5クラスの場合
             val_ious, val_all_iou_counts = update_ious_and_counts(val_ious, val_all_iou_counts, val_iou)
+    # 混同行列の計算
+    conf_matrix = confusion_matrix(all_targets, all_preds, labels=range(class_num))
 
-    return running_loss / len(data_loader), val_ious
+    return running_loss / len(data_loader), val_ious, conf_matrix
 
 def parse_args():
     # オプションの解析
