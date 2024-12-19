@@ -32,7 +32,8 @@ from segment_utils.metrics import(
     save_confusion_matrix_with_metrics,
     calculate_iou,
     update_ious_and_counts,
-    calculate_average_ious_and_miou
+    calculate_average_ious_and_miou,
+    calculate_iou_and_miou_from_confusion_matrix
 )
 
 from utils.model_utils import (
@@ -119,11 +120,14 @@ def main(args):
     logger.info(f"{miou=}")
     # ピクセル単位の混同行列を作成
     conf_matrix = confusion_matrix(all_ground_truths, all_predictions, labels=list(range(num_classes)))
+    # iouを混同行列から計算
+    iou_from_matrix, miou_from_matrix = calculate_iou_and_miou_from_confusion_matrix(conf_matrix, num_classes)
     # 混同行列とメトリクスを保存
     save_confusion_matrix_with_metrics(conf_matrix, metrics_segment_save_dir, class_names)
     # CSVにIoU結果を保存
-    save_iou_to_csv(avg_ious, miou, class_names, metrics_segment_save_dir, num_classes)
-    # save_iou_to_csv_from_conf_matrix(conf_matrix, class_names, metrics_segment_save_dir, num_classes)
+    save_iou_to_csv(avg_ious, miou, class_names, metrics_segment_save_dir, Path("iou_results.csv"), num_classes)
+    # 混同行列から計算したiouを保存
+    save_iou_to_csv(iou_from_matrix, miou_from_matrix, class_names, metrics_segment_save_dir, Path("iou_results_from_conf_matrix.csv"), num_classes)
     
 
 
@@ -201,9 +205,9 @@ def get_test_image_paths_and_labels(
             region_mask = np.array(img_mask)
 
             # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
-            if "sella" in region['tags']:
+            if "sellar" in region['tags']:
                 mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
-            elif "sellar" in region['tags']:
+            elif "sella" in region['tags']:
                 mask = np.maximum(mask, region_mask * 2)  # クラスID 2を使用
             elif "pituitary" in region['tags']:
                 mask = np.maximum(mask, region_mask * 3)  # クラスID 3を使用

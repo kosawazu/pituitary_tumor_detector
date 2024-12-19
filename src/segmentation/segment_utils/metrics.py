@@ -6,19 +6,19 @@ import torch.nn.functional as F
 import math
 from typing import List, Tuple, Optional
 
-def calculate_iou_from_confusion_matrix(
+def calculate_iou_and_miou_from_confusion_matrix(
     conf_matrix: np.ndarray, 
     num_classes: int
-) -> List[float]:
+) -> Tuple[List[float], float]:
     """
-    混同行列から各クラスのIoUを計算する関数。
+    混同行列から各クラスのIoUとmIoUを計算する関数。
 
     Args:
         conf_matrix (numpy.ndarray): 混同行列
         num_classes (int): クラス数
 
     Returns:
-        iou_per_class (list): 各クラスのIoUのリスト
+        Tuple[List[float], float]: 各クラスのIoUのリストとmIoU
     """
     iou_per_class = []
 
@@ -35,13 +35,18 @@ def calculate_iou_from_confusion_matrix(
             iou = float('nan')  # クラスが存在しない場合はNaNにする
         iou_per_class.append(iou)
     
-    return iou_per_class
+    # mIoUの計算
+    valid_ious = [iou for iou in iou_per_class if not np.isnan(iou)]
+    miou = sum(valid_ious) / len(valid_ious) if valid_ious else float('nan')
+    
+    return iou_per_class, miou
 
 def save_iou_to_csv(
     iou_per_class: List[float],
     miou: np.ndarray, 
     class_names: List[str], 
     save_path: Path, 
+    file_name: Path,
     num_classes: int
 ) -> None:
     """
@@ -54,7 +59,7 @@ def save_iou_to_csv(
         num_classes (int): クラス数。デフォルトは5。
     """
     # CSVファイルの保存先を指定
-    csv_file = save_path / "iou_results_from_conf_matrix.csv"
+    csv_file = save_path / file_name
 
     # CSVファイルが存在しない場合はヘッダーを作成
     if not csv_file.exists():
