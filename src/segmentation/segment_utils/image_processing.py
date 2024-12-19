@@ -125,8 +125,8 @@ def save_blended_image_with_class4_gradient(
     original_image = Image.open(original_image_path).convert('RGB')
 
     # # モデルの出力を元画像のサイズにリサイズ
-    # output_resized = F.interpolate(output, size=(original_image.height, original_image.width), mode='bilinear', align_corners=False)
-    output_resized = F.interpolate(output, size=(original_image.height, original_image.width), mode='nearest')
+    output_resized = F.interpolate(output, size=(original_image.height, original_image.width), mode='bilinear', align_corners=False)
+    # output_resized = F.interpolate(output, size=(original_image.height, original_image.width), mode='nearest')
 
     # リサイズした出力を確率に変換
     probabilities = F.softmax(output_resized, dim=1)
@@ -185,9 +185,9 @@ def resize_mask(
     
     # 入力テンソルの次元数を確認
     if mask.dim() == 4:  # (N, C, H, W)
-        return F.interpolate(mask.float(), size=output_size, mode='nearest').long()
+        return F.interpolate(mask.float(), size=output_size, mode='bilinear', align_corners=False).long()
     elif mask.dim() == 3:  # (C, H, W)
-        return F.interpolate(mask.unsqueeze(0).float(), size=output_size, mode='nearest').squeeze(0).long()
+        return F.interpolate(mask.unsqueeze(0).float(), size=output_size, mode='bilinear', align_corners=False).squeeze(0).long()
     else:
         raise ValueError(f"Unexpected input shape: {mask.shape}")
 
