@@ -24,7 +24,7 @@ from segment_utils.image_processing import(
     segment_save,
     save_blended_image,
     save_blended_image_with_class4_gradient,
-    resize_mask
+    resize_segmentation_tensor
 )
 
 from segment_utils.metrics import(
@@ -98,7 +98,7 @@ def main(args):
                 output = output['out']
 
         # 各ピクセルに最も確率の高いクラスを割り当てる
-        output_resized = resize_mask(output, test_image_label.shape[-2:])
+        output_resized = resize_segmentation_tensor(output, test_image_label.shape[-2:])
         output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
         ious = calculate_iou(output_predictions, test_image_label_tensor, num_classes)
         all_ious, all_iou_counts = update_ious_and_counts(all_ious, all_iou_counts, ious)
@@ -143,18 +143,6 @@ def get_test_image_name(
         file_names_list = [line.strip() for line in file]
 
     return file_names_list
-
-# 推論結果を正解ラベルのサイズにリサイズ
-def resize_predictions(
-    output_predictions: np.ndarray, 
-    target_shape: Tuple[int, int]
-) -> np.ndarray:
-    # output_predictionsをPIL画像に変換してリサイズ
-    prediction_image = Image.fromarray(output_predictions.astype(np.uint8), mode='L')
-    resized_prediction = prediction_image.resize(target_shape, Image.NEAREST)
-    
-    # リサイズ後の画像をNumPy配列に戻す
-    return np.array(resized_prediction)
 
 def get_test_image_paths_and_labels(
     file_names_list: List[str],

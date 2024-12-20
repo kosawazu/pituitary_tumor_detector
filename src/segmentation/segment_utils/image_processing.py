@@ -172,7 +172,7 @@ def save_blended_image_with_class4_gradient(
 
     print(f"Blended image with class 4 gradient saved to {save_path}")
 
-def resize_mask(
+def resize_segmentation_tensor(
     mask: torch.Tensor,
     output_size: Tuple[int, int]
 ) -> torch.Tensor:

@@ -27,7 +27,7 @@ from segment_utils.dataset_utils import(
 # 画像処理関連
 from segment_utils.image_processing import(
     segment_save,
-    resize_mask
+    resize_segmentation_tensor
 )
 # 評価関連
 from segment_utils.metrics import(
@@ -304,7 +304,7 @@ def one_epoch_train(
             outputs = outputs['out']
         logger.debug(f"モデルの出力値のサイズ:{outputs.shape}")
         output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
-        masks_resized = resize_mask(masks, output_size)  # リサイズする
+        masks_resized = resize_segmentation_tensor(masks, output_size)  # リサイズする
         logger.debug(f"Output shape: {outputs.shape}, Mask shape: {masks.shape} => MaskResized shape: {masks_resized.shape}")
         # 損失の計算
         loss = criterion(outputs, masks_resized.long())
@@ -351,7 +351,7 @@ def eval_dataset_and_save_images(
         for images, masks, image_names in data_loader:
             images, masks = images.to(device), masks.to(device)
 
-            # # 勾配の初期化
+            # 勾配の初期化
             # optimizer.zero_grad()
             # 順伝播
             outputs = model(images)
@@ -360,7 +360,7 @@ def eval_dataset_and_save_images(
             
             # 損失の計算
             output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
-            masks_resized = resize_mask(masks, output_size)  # リサイズする
+            masks_resized = resize_segmentation_tensor(masks, output_size)  # リサイズする
             loss = criterion(outputs, masks_resized.long())
 
             running_loss += loss.item()
