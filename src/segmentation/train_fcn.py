@@ -350,23 +350,19 @@ def eval_dataset_and_save_images(
     with torch.no_grad():
         for images, masks, image_names in data_loader:
             images, masks = images.to(device), masks.to(device)
-
-            # 勾配の初期化
-            # optimizer.zero_grad()
-            # 順伝播
             outputs = model(images)
             if isinstance(outputs, dict):
                 outputs = outputs['out']
             
             # 損失の計算
-            output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
-            masks_resized = resize_segmentation_tensor(masks, output_size)  # リサイズする
-            loss = criterion(outputs, masks_resized.long())
-
+            outputs_resized = resize_segmentation_tensor(outputs, masks.shape[-2:])  # マスクのサイズに合わせてリサイズ
+            # 損失の計算
+            loss = criterion(outputs_resized.float(), masks.long())
             running_loss += loss.item()
-            preds = outputs.argmax(1).cpu().numpy()
+            # 予測と正解ラベルの処理
+            preds = outputs_resized.argmax(1).cpu().numpy()
             all_preds.extend(preds.flatten())
-            all_targets.extend(masks_resized.cpu().numpy().flatten())
+            all_targets.extend(masks.cpu().numpy().flatten())
             if seg_img_dir is not None:
                 # 各画像に対してセグメント化結果を保存
                 for i in range(images.size(0)):
@@ -375,7 +371,7 @@ def eval_dataset_and_save_images(
                     segment_save(seg_img_dir, org_img_dir / image_name, output_prediction)
             
             # 各クラスごとのIoUを計算
-            val_iou = calculate_iou(preds, masks_resized, class_num)  # 5クラスの場合
+            val_iou = calculate_iou(preds, masks, class_num)  # 5クラスの場合
             val_ious, val_all_iou_counts = update_ious_and_counts(val_ious, val_all_iou_counts, val_iou)
     # 混同行列の計算
     conf_matrix = confusion_matrix(all_targets, all_preds, labels=range(class_num))
