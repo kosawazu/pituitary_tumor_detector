@@ -11,13 +11,16 @@ import numpy as np
 from PIL import Image, ImageDraw
 import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix
+import torch.nn as nn
 import math
-from typing import Tuple, List
+from typing import Tuple, List, Any
 sys.path.append("../")
 # 自作モジュール
 
 from segment_utils.dataset_utils import(
     get_transform,
+    get_image_size,
+    CLASS_MAPPING
 )
 
 from segment_utils.image_processing import(
@@ -49,7 +52,6 @@ logger = logging.getLogger(__name__)
 
 def main(args):
     data_dir = args.data_dir 
-    class_num = args.class_num
     model_name = args.model_name
     attention_mode = args.attention_mode
     model_file = args.save_model_file
@@ -63,13 +65,14 @@ def main(args):
     model_path = model_data_dir / Path("model", f"{model_file}.pth")
     file_names_list = get_test_image_name(test_text_file_path)
     test_image_paths, test_true_labels = get_test_image_paths_and_labels(file_names_list, data_dir)
-    transform = get_transform(args.image_size)
+    image_size = get_image_size(model_name)
+    transform = get_transform(image_size)
     os.makedirs(segment_save_dir, exist_ok=True)
     os.makedirs(blended_segment_save_dir, exist_ok=True)
     os.makedirs(metrics_segment_save_dir, exist_ok=True)
     os.makedirs(gradation_segment_save_dir, exist_ok=True)
-    class_names = ['background', 'sellar', 'sella', 'pituitary', 'tumor']
-    num_classes = len(class_names)
+    class_names = list(CLASS_MAPPING.values())
+    class_num = len(CLASS_MAPPING)
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
     logger.info(f"{model_path}を読み込みます")
@@ -77,46 +80,17 @@ def main(args):
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model, model_path=model_path)
 
-    # モデルを推論モードに設定
-    model.eval()
-
-    all_ground_truths = []
-    all_predictions = []
-    all_ious = []
-    all_iou_counts = []
-    for test_image_path, test_image_label in zip(test_image_paths, test_true_labels):
-        test_image_label_tensor = torch.tensor(test_image_label, device=device)
-        # 入力画像を読み込み、前処理
-        img = Image.open(test_image_path).convert('RGB')
-        input_tensor = transform(img)
-        input_batch = input_tensor.unsqueeze(0).to(device)  # バッチ次元を追加
-
-        # 推論
-        with torch.no_grad():
-            output = model(input_batch)
-            if isinstance(output, dict):
-                if 'logits' in output:
-                    output = output['logits']
-                elif 'out' in output:
-                    output = output['out']
-                else:
-                    raise KeyError("Expected 'logits' or 'out' in model output")
-
-        # 各ピクセルに最も確率の高いクラスを割り当てる
-        output_resized = resize_segmentation_tensor(output, test_image_label.shape[-2:])
-        output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
-        ious = calculate_iou(output_predictions, test_image_label_tensor, num_classes)
-        all_ious, all_iou_counts = update_ious_and_counts(all_ious, all_iou_counts, ious)
-
-        # ピクセルごとに予測ラベルと正解ラベルをフラットにする
-        all_ground_truths.append(test_image_label.flatten())
-        all_predictions.append(output_predictions.flatten())
-        #セグメントした画像を保存
-        segment_save(segment_save_dir, test_image_path, output_predictions)
-        save_blended_image(blended_segment_save_dir, test_image_path, output_predictions)
-        save_blended_image_with_class4_gradient(gradation_segment_save_dir, test_image_path, output)
-
-
+    all_ground_truths, all_predictions, all_ious = evaluate_model(
+                                                        model,
+                                                        test_image_paths,
+                                                        test_true_labels,
+                                                        device,
+                                                        transform,
+                                                        class_num,
+                                                        segment_save_dir,
+                                                        blended_segment_save_dir,
+                                                        gradation_segment_save_dir
+                                                    )
     # すべての画像の正解ラベルと予測ラベルをまとめる
     all_ground_truths = np.concatenate(all_ground_truths)
     all_predictions = np.concatenate(all_predictions)
@@ -124,17 +98,67 @@ def main(args):
     logger.info(f"{avg_ious=}")
     logger.info(f"{miou=}")
     # ピクセル単位の混同行列を作成
-    conf_matrix = confusion_matrix(all_ground_truths, all_predictions, labels=list(range(num_classes)))
+    conf_matrix = confusion_matrix(all_ground_truths, all_predictions, labels=list(range(class_num)))
     # iouを混同行列から計算
-    iou_from_matrix, miou_from_matrix = calculate_iou_and_miou_from_confusion_matrix(conf_matrix, num_classes)
+    iou_from_matrix, miou_from_matrix = calculate_iou_and_miou_from_confusion_matrix(conf_matrix, class_num)
     # 混同行列とメトリクスを保存
     save_confusion_matrix_with_metrics(conf_matrix, metrics_segment_save_dir, class_names)
     # CSVにIoU結果を保存
-    save_iou_to_csv(avg_ious, miou, class_names, metrics_segment_save_dir, Path("iou_results.csv"), num_classes)
+    save_iou_to_csv(avg_ious, miou, class_names, metrics_segment_save_dir, Path("iou_results.csv"), class_num)
     # 混同行列から計算したiouを保存
-    save_iou_to_csv(iou_from_matrix, miou_from_matrix, class_names, metrics_segment_save_dir, Path("iou_results_from_conf_matrix.csv"), num_classes)
+    save_iou_to_csv(iou_from_matrix, miou_from_matrix, class_names, metrics_segment_save_dir, Path("iou_results_from_conf_matrix.csv"), class_num)
     
 
+def evaluate_model(
+    model: nn.Module,
+    test_image_paths: List[str],
+    test_true_labels: List[np.ndarray],
+    device: torch.device,
+    transform: Any,
+    class_num: int,
+    segment_save_dir: str,
+    blended_segment_save_dir: str,
+    gradation_segment_save_dir: str
+) -> Tuple[List[np.ndarray], List[np.ndarray], List[float], List[int]]:
+    model.eval()
+    all_ground_truths = []
+    all_predictions = []
+    all_ious = []
+    for test_image_path, test_image_label in zip(test_image_paths, test_true_labels):
+        test_image_label_tensor = torch.tensor(test_image_label, device=device)
+        # 入力画像を読み込み、前処理
+        img = Image.open(test_image_path).convert('RGB')
+        input_tensor = transform(img)
+        input_batch = input_tensor.unsqueeze(0).to(device)
+        # 推論
+        with torch.no_grad():
+            output = model(input_batch)
+            output = extract_output(output)
+        # 各ピクセルに最も確率の高いクラスを割り当てる
+        output_resized = resize_segmentation_tensor(output, test_image_label.shape[-2:])
+        output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
+        ious = calculate_iou(output_predictions, test_image_label_tensor, class_num)
+        all_ious = update_ious_and_counts(all_ious, ious)
+        # ピクセルごとに予測ラベルと正解ラベルをフラットにする
+        all_ground_truths.append(test_image_label.flatten())
+        all_predictions.append(output_predictions.flatten())
+        # セグメントした画像を保存
+        segment_save(segment_save_dir, test_image_path, output_predictions)
+        save_blended_image(blended_segment_save_dir, test_image_path, output_predictions)
+        save_blended_image_with_class4_gradient(gradation_segment_save_dir, test_image_path, output)
+    return all_ground_truths, all_predictions, all_ious
+
+def extract_output(
+    output: Any
+) -> torch.Tensor:
+    if isinstance(output, dict):
+        if 'logits' in output:
+            return output['logits']
+        elif 'out' in output:
+            return output['out']
+        else:
+            raise KeyError("Expected 'logits' or 'out' in model output")
+    return output
 
 def get_test_image_name(
     txt_file_path: Path
@@ -248,11 +272,6 @@ def parse_args():
                         type=int,
                         default=5,
                         help='分類するクラス数'
-                        )
-    parser.add_argument("--image_size",
-                        type=tuple_type,
-                        default=(224, 224),
-                        help='画像サイズ (height, width)'
                         )
     parser.add_argument('--attention_mode', 
                         type=str,

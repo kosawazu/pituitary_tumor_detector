@@ -4,6 +4,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import torch
+import os
 from typing import Tuple
 
 COLORS = {
@@ -99,7 +100,6 @@ def save_blended_image(
 
     # 保存パスの設定
     save_path = save_dir / f"{Path(original_image_path).stem}_blended.png"
-
     # 重ね合わせた画像を保存
     blended_image.save(save_path)
 
@@ -163,10 +163,8 @@ def save_blended_image_with_class4_gradient(
 
     # 元画像とセグメンテーション結果を重ね合わせ
     blended_image = Image.blend(original_image, segmentation_image, alpha=alpha)
-
     # 保存パスの設定
     save_path = save_dir / f"{Path(original_image_path).stem}_blended_class4_gradient.png"
-
     # 重ね合わせた画像を保存
     blended_image.save(save_path)
 

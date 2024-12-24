@@ -177,13 +177,12 @@ def calculate_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int) ->
     return ious
 
 
-def update_ious_and_counts(all_ious, all_iou_counts, ious):
+def update_ious_and_counts(all_ious, ious):
     """
     IoUリストとカウントを更新する関数
 
     Parameters:
     all_ious (List[List[float] | None]): これまでのIoUのリスト
-    all_iou_counts (List[int]): これまでの有効なIoUのカウント
     ious (List[float]): 新しいIoUのリスト
 
     Returns:
@@ -191,20 +190,18 @@ def update_ious_and_counts(all_ious, all_iou_counts, ious):
     """
     if not all_ious:
         updated_ious = [[x] if not math.isnan(x) else None for x in ious]
-        updated_counts = [1 if not math.isnan(x) else 0 for x in ious]
     else:
         updated_ious = [
             x + [y] if x is not None and not math.isnan(y) else
             [y] if x is None and not math.isnan(y) else
             x for x, y in zip(all_ious, ious)
         ]
-        updated_counts = [count + (1 if not math.isnan(y) else 0) for count, y in zip(all_iou_counts, ious)]
     
-    return updated_ious, updated_counts
+    return updated_ious
 
 def calculate_average_ious_and_miou(
     all_ious: List[Optional[List[float]]]
-) -> tuple[List[float], float]:
+) -> Tuple[List[float], float]:
     """
     クラスごとの平均IoUとmIoUを計算する関数
 
