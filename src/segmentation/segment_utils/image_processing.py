@@ -173,21 +173,20 @@ def save_blended_image_with_class4_gradient(
     print(f"Blended image with class 4 gradient saved to {save_path}")
 
 def resize_segmentation_tensor(
-    mask: torch.Tensor,
-    output_size: Tuple[int, int]
+    original_segmentation: torch.Tensor,
+    target_size: Tuple[int, int]
 ) -> torch.Tensor:
     # マスクの現在のサイズを取得
-    current_size = mask.shape[-2:]
+    current_size = original_segmentation.shape[-2:]
     
     # 現在のサイズと目標サイズが同じ場合、マスクをそのまま返す
-    if current_size == output_size:
-        return mask
-    
+    if current_size == target_size:
+        return original_segmentation
     # 入力テンソルの次元数を確認
-    if mask.dim() == 4:  # (N, C, H, W)
-        return F.interpolate(mask.float(), size=output_size, mode='bilinear', align_corners=False).long()
-    elif mask.dim() == 3:  # (C, H, W)
-        return F.interpolate(mask.unsqueeze(0).float(), size=output_size, mode='bilinear', align_corners=False).squeeze(0).long()
+    if original_segmentation.dim() == 4:  # (N, C, H, W)
+        return F.interpolate(original_segmentation.float(), size=target_size, mode='bilinear', align_corners=False).long()
+    elif original_segmentation.dim() == 3:  # (C, H, W)
+        return F.interpolate(original_segmentation.unsqueeze(0).float(), size=target_size, mode='bilinear', align_corners=False).squeeze(0).long()
     else:
-        raise ValueError(f"Unexpected input shape: {mask.shape}")
+        raise ValueError(f"Unexpected input shape: {original_segmentation.shape}")
 

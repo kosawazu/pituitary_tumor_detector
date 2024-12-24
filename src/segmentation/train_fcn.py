@@ -22,7 +22,9 @@ from segment_utils.dataset_utils import(
     get_transform,
     SegmentationDataset,
     split_dataset,
-    CLASS_MAPPING
+    CLASS_MAPPING,
+    get_image_size
+    
 )
 # 画像処理関連
 from segment_utils.image_processing import(
@@ -89,7 +91,8 @@ def main(args):
     model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model)
-    transform = get_transform(args.image_size)
+    image_size = get_image_size(model_name)
+    transform = get_transform(image_size)
     # データセットの作成
     dataset = SegmentationDataset(mask_dir, train_image_dir, transform)
     #データ数の確認
@@ -301,7 +304,12 @@ def one_epoch_train(
         # モデルの出力
         outputs = model(images)
         if isinstance(outputs, dict):
-            outputs = outputs['out']
+            if 'logits' in outputs:
+                outputs = outputs['logits']
+            elif 'out' in outputs:
+                outputs = outputs['out']
+            else:
+                raise KeyError("Expected 'logits' or 'out' in model outputs")
         logger.debug(f"モデルの出力値のサイズ:{outputs.shape}")
         output_size = outputs.shape[2:]  # 出力の空間サイズ (height, width)
         masks_resized = resize_segmentation_tensor(masks, output_size)  # リサイズする
@@ -352,10 +360,15 @@ def eval_dataset_and_save_images(
             images, masks = images.to(device), masks.to(device)
             outputs = model(images)
             if isinstance(outputs, dict):
-                outputs = outputs['out']
+                if 'logits' in outputs:
+                    outputs = outputs['logits']
+                elif 'out' in outputs:
+                    outputs = outputs['out']
+                else:
+                    raise KeyError("Expected 'logits' or 'out' in model outputs")
             
-            # 損失の計算
-            outputs_resized = resize_segmentation_tensor(outputs, masks.shape[-2:])  # マスクのサイズに合わせてリサイズ
+            # メインの処理部分
+            outputs_resized = resize_segmentation_tensor(outputs, masks.shape[-2:])
             # 損失の計算
             loss = criterion(outputs_resized.float(), masks.long())
             running_loss += loss.item()
@@ -373,6 +386,9 @@ def eval_dataset_and_save_images(
             # 各クラスごとのIoUを計算
             val_iou = calculate_iou(preds, masks, class_num)  # 5クラスの場合
             val_ious, val_all_iou_counts = update_ious_and_counts(val_ious, val_all_iou_counts, val_iou)
+
+            del outputs, outputs_resized, preds  # メモリ解放
+            torch.cuda.empty_cache()
     # 混同行列の計算
     conf_matrix = confusion_matrix(all_targets, all_preds, labels=range(class_num))
 
@@ -404,7 +420,7 @@ def parse_args():
     parser.add_argument("--model_name",
                         type=str,
                         default="fcn_resnet50",
-                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "vit_b_16_segmentation", "fcn_bot_resnet101"],
+                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "segformer_b0", "fcn_bot_resnet101"],
                         help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101, vit_b_16_segmentation."
                         )
     parser.add_argument("--batch_size",

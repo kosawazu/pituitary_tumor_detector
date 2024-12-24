@@ -12,6 +12,7 @@ from utils.attention_layers import (
 )
 from utils.botnet import fcn_bot_resnet101
 from utils.vit import vit_segmentation
+from transformers import SegformerForSemanticSegmentation
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +54,19 @@ def setup_fcn_model(
     "fcn_resnet101":models.segmentation.fcn_resnet101(pretrained=True),
     "deeplabv3_resnet101":models.segmentation.deeplabv3_resnet101(pretrained=True),
     "fcn_bot_resnet101":fcn_bot_resnet101(num_classes),
-    "vit_b_16_segmentation":vit_segmentation(num_classes)
+    "segformer_b0": SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
     }
     if model_name not in model_dict:
         raise ValueError(f"Invalid model_name '{model_name}'.")
     model = model_dict[model_name]
+    if "segformer" in model_name:
+        # SegFormerモデルのクラス数を調整
+        if num_classes != model.decode_head.classifier.out_channels:
+            model.decode_head.classifier = nn.Conv2d(
+                model.decode_head.classifier.in_channels,
+                num_classes,
+                kernel_size=1
+            )
     model = tune_model(model, model_name, attention_mode, num_classes)
     return model
 
@@ -80,7 +89,7 @@ def tune_model(
             param.requires_grad = True
         for param in model.encoder.layer4.parameters():
             param.requires_grad = True
-    elif model_name == "vit_b_16_segmentation":
+    elif model_name == "segformer_b0":
         pass
     else:
         self_attention = SelfAttention(2048)  # layer4の出力チャンネル数は2048

@@ -95,7 +95,12 @@ def main(args):
         with torch.no_grad():
             output = model(input_batch)
             if isinstance(output, dict):
-                output = output['out']
+                if 'logits' in output:
+                    output = output['logits']
+                elif 'out' in output:
+                    output = output['out']
+                else:
+                    raise KeyError("Expected 'logits' or 'out' in model output")
 
         # 各ピクセルに最も確率の高いクラスを割り当てる
         output_resized = resize_segmentation_tensor(output, test_image_label.shape[-2:])
@@ -224,7 +229,7 @@ def parse_args():
     parser.add_argument("--model_name",
                         type=str,
                         default="fcn_resnet50",
-                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "vit_b_16_segmentation", "fcn_bot_resnet101"],
+                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "segformer_b0", "fcn_bot_resnet101"],
                         help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101, vit_b_16_segmentation."
                         )
     parser.add_argument("--save_model_file",

@@ -155,6 +155,15 @@ class SegmentationTransform:
 
 def get_transform(image_size: Tuple[int, int], is_train: bool = False) -> SegmentationTransform:
     return SegmentationTransform(image_size, is_train)
+
+def get_image_size(
+    model_name: str
+) -> Tuple[int,int]:
+    if model_name == "segformer_b0":
+        image_size = (512, 512)
+    else:
+        image_size = (224, 224)
+    return image_size
     
 def save_filenames(dataset, indices, filepath):
     """
@@ -214,3 +223,5 @@ def split_dataset(
     test_dataset = SubsetWithAttributes(dataset, test_indices)
     
     return train_dataset, val_dataset, test_dataset
+
+
