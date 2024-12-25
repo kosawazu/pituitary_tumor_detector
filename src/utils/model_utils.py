@@ -54,7 +54,8 @@ def setup_fcn_model(
     "fcn_resnet101":models.segmentation.fcn_resnet101(pretrained=True),
     "deeplabv3_resnet101":models.segmentation.deeplabv3_resnet101(pretrained=True),
     "fcn_bot_resnet101":fcn_bot_resnet101(num_classes),
-    "segformer_b0": SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
+    "segformer_b0": SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512"),
+    "segformer_b4": SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b4-finetuned-ade-512-512")
     }
     if model_name not in model_dict:
         raise ValueError(f"Invalid model_name '{model_name}'.")
@@ -89,7 +90,7 @@ def tune_model(
             param.requires_grad = True
         for param in model.encoder.layer4.parameters():
             param.requires_grad = True
-    elif model_name == "segformer_b0":
+    elif model_name == "segformer_b0" or model_name == "segformer_b4":
         pass
     else:
         self_attention = SelfAttention(2048)  # layer4の出力チャンネル数は2048

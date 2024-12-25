@@ -396,8 +396,8 @@ def parse_args():
     parser.add_argument("--model_name",
                         type=str,
                         default="fcn_resnet50",
-                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "segformer_b0", "fcn_bot_resnet101"],
-                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101, vit_b_16_segmentation."
+                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "segformer_b0", "fcn_bot_resnet101", "segformer_b4"],
+                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101, vit_b_16_segmentation, segformer_b4."
                         )
     parser.add_argument("--batch_size",
                         type=int,
