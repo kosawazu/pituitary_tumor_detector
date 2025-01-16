@@ -102,34 +102,6 @@ def process_camera_feed(model, device, transform):
 def rgb_to_bgr(color):
     return (color[2], color[1], color[0])
 
-# def initialize_video(
-#     video_path: Path
-# ) -> Tuple[cv2.VideoCapture, int, int, int, int]:
-#     cap = cv2.VideoCapture(str(video_path))
-#     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-#     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-#     fps = int(cap.get(cv2.CAP_PROP_FPS))
-#     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-#     return cap, width, height, fps, total_frames
-
-# def setup_window(
-#     width: int, 
-#     height: int
-# ) -> None:
-#     screen_width, screen_height = get_screen_resolution()
-#     cv2.namedWindow('Original vs Segmentation', cv2.WINDOW_NORMAL)
-#     initial_width = min(screen_width, width * 2)
-#     initial_height = int(height * (initial_width / (width * 2)))
-#     cv2.resizeWindow('Original vs Segmentation', initial_width, initial_height)
-
-# def create_video_writer(
-#     output_path: Path, 
-#     width: int, height: int, 
-#     fps: int
-# ) -> cv2.VideoWriter:
-#     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-#     return cv2.VideoWriter(str(output_path), fourcc, fps, (width*2, height))
-
 def process_frame(
     frame: np.ndarray, 
     model: nn.Module, 
@@ -179,101 +151,6 @@ def create_segmentation_mask(
             mask = output_predictions == class_id
             segmentation_mask[mask] = color[::-1]
     return segmentation_mask
-
-# def resize_frame(frame: np.ndarray, window_name: str) -> np.ndarray:
-#     window_width, window_height = cv2.getWindowImageRect(window_name)[2:4]
-#     frame_height, frame_width = frame.shape[:2]
-    
-#     # アスペクト比を計算
-#     aspect_ratio = frame_width / frame_height
-#     window_ratio = window_width / window_height
-
-#     if window_ratio > aspect_ratio:
-#         # ウィンドウが画像より横長の場合
-#         new_height = window_height
-#         new_width = int(new_height * aspect_ratio)
-#     else:
-#         # ウィンドウが画像より縦長の場合
-#         new_width = window_width
-#         new_height = int(new_width / aspect_ratio)
-
-#     # フレームをリサイズ
-#     resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
-
-#     # 黒い背景を作成
-#     background = np.zeros((window_height, window_width, 3), dtype=np.uint8)
-
-#     # リサイズしたフレームを中央に配置
-#     y_offset = (window_height - new_height) // 2
-#     x_offset = (window_width - new_width) // 2
-#     background[y_offset:y_offset+new_height, x_offset:x_offset+new_width] = resized
-
-#     return background
-
-# def process_video(
-#     video_path: Path, 
-#     output_video_path: Path, 
-#     model: nn.Module, 
-#     device: torch.device, 
-#     transform: Callable[[Image.Image], Tensor]
-# ) -> None:
-#     thresholds = [0.85, 0.90, 0.95]
-#     colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
-#     gradient_colors_bgr = [rgb_to_bgr(color) for color in GRADIENT_COLORS]
-
-#     cap, width, height, fps, total_frames = initialize_video(video_path)
-#     setup_window(width, height)  # ウィンドウサイズは処理済み映像に合わせる
-#     out = create_video_writer(output_video_path, width, height, fps)
-
-#     frame_time = 1.0 / fps
-#     last_process_time = time.time()
-#     frame_idx = 0
-#     last_segmentation_frame = None
-#     is_paused = False
-
-#     while cap.isOpened():
-#         if not is_paused:
-#             ret, frame = cap.read()
-#             if not ret:
-#                 break
-
-#             current_time = time.time()
-#             elapsed_time = current_time - last_process_time
-#             frame_idx += 1
-
-#             if elapsed_time >= 1.0 or last_segmentation_frame is None:
-#                 print(f"Processing frame {frame_idx}/{total_frames}")
-#                 last_segmentation_frame = process_frame(frame, model, device, transform, thresholds, colors_bgr, gradient_colors_bgr)
-#                 last_process_time = current_time
-
-#             segmentation_frame = last_segmentation_frame if last_segmentation_frame is not None else frame
-#             resized_frame = resize_frame(segmentation_frame, 'Original vs Segmentation')  # 処理済み映像のみリサイズ
-
-#             cv2.imshow('Original vs Segmentation', resized_frame)  # 処理済み映像のみ表示
-#             out.write(segmentation_frame)  # 処理済み映像のみ保存
-
-#         key = cv2.waitKey(1) & 0xFF
-#         if key == ord('q'):
-#             break
-#         elif key == 32:  # スペースキーのASCIIコード
-#             is_paused = not is_paused
-#             print("Paused" if is_paused else "Resumed")
-#         elif key == ord('n') and is_paused:
-#             # 一時停止中に'n'キーを押すと次のフレームに進む
-#             ret, frame = cap.read()
-#             if ret:
-#                 frame_idx += 1
-#                 print(f"Advancing to frame {frame_idx}/{total_frames}")
-#                 last_segmentation_frame = process_frame(frame, model, device, transform, thresholds, colors_bgr, gradient_colors_bgr)
-#                 segmentation_frame = last_segmentation_frame
-#                 resized_frame = resize_frame(segmentation_frame, 'Original vs Segmentation')
-#                 cv2.imshow('Original vs Segmentation', resized_frame)
-#                 out.write(segmentation_frame)
-
-#     cap.release()
-#     out.release()
-#     cv2.destroyAllWindows()
-
 
 def get_screen_resolution():
     """画面の解像度を取得する関数"""
