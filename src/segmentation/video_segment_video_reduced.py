@@ -18,7 +18,7 @@ import time
 from screeninfo import get_monitors
 from typing import Callable, Tuple, List, Dict
 
-sys.path.append("../")
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # 自作モジュール
 from segmentation import (
     transform
@@ -250,7 +250,7 @@ def parse_args():
 
     parser.add_argument("--model_name",
                         type=str,
-                        default="fcn_resnet50",
+                        default="deeplabv3_resnet101",
                         choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19", "deeplabv3_resnet101"],
                         help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19, deeplabv3_resnet101."
                         )
