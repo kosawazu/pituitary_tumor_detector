@@ -8,7 +8,7 @@ class vit_segmentation(nn.Module):
         super(vit_segmentation, self).__init__()
         
         # ViT-Base モデルをロード（事前学習済み）
-        self.vit = models.vit_b_16(pretrained=True)
+        self.vit = models.vit_b_16(pretrained=False)
         
         # ViTの出力次元（通常は768）
         vit_output_dim = self.vit.hidden_dim

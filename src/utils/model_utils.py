@@ -12,6 +12,7 @@ try:
     from utils.vit import vit_segmentation
 except ImportError as e:
     raise ImportError(f"Failed to import custom modules: {e}")
+
 # ロガーの設定
 logging.basicConfig(
     level=logging.INFO,
@@ -22,6 +23,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
 # PyInstaller 実行時と通常実行時の base_path の設定
 if getattr(sys, 'frozen', False):  # PyInstaller 実行時
     base_path = sys._MEIPASS
@@ -29,8 +31,14 @@ if getattr(sys, 'frozen', False):  # PyInstaller 実行時
 else:  # 通常のスクリプト実行時
     base_path = os.path.dirname(__file__)
     logger.info("Running in standard Python environment.")
-# モデルファイルのパスを取得
-model_path = os.path.join(base_path, "result/nagoya/demo_model/deeplabv3_resnet101/best_tumor_iou_model.pth")
+
+# 修正後のモデルパス取得
+model_path = os.path.join(base_path, "result", "nagoya", "demo_model", "deeplabv3_resnet101", "best_tumor_iou_model.pth")
+
+# デバッグ用のログを追加
+logger.info(f"Base path: {base_path}")
+logger.info(f"Model path: {model_path}")
+
 # モデルファイルの存在確認
 if not os.path.exists(model_path):
     logger.error(f"Model file not found at: {model_path}")
@@ -72,9 +80,9 @@ def setup_fcn_model(model_name: str, attention_mode: str, num_classes: int = 3) 
     モデルのロード（事前学習済みのモデルをファインチューニング）
     """
     model_dict = {
-        "fcn_resnet50": models.segmentation.fcn_resnet50(pretrained=True),
-        "fcn_resnet101": models.segmentation.fcn_resnet101(pretrained=True),
-        "deeplabv3_resnet101": models.segmentation.deeplabv3_resnet101(pretrained=True),
+        "fcn_resnet50": models.segmentation.fcn_resnet50(pretrained=None),
+        "fcn_resnet101": models.segmentation.fcn_resnet101(pretrained=None),
+        "deeplabv3_resnet101": models.segmentation.deeplabv3_resnet101(pretrained=False),
         "fcn_bot_resnet101": fcn_bot_resnet101(num_classes),
         "vit_b_16_segmentation": vit_segmentation(num_classes)
     }
@@ -107,11 +115,14 @@ def tune_model(model: nn.Module, model_name: str, attention_mode: str, num_class
         channel_attention = ChannelAttention(2048)
         if model_name == "deeplabv3_resnet101":
             model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
-            model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
+            # aux_classifier の処理
+            if model.aux_classifier is not None:
+                model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
         elif "resnet" in model_name:
             model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
         else:
             raise ValueError(f"Unsupported model: {model_name}")
+        
         # Attention の設定
         original_layer4 = model.backbone.layer4
         if attention_mode == "none":
@@ -125,4 +136,5 @@ def tune_model(model: nn.Module, model_name: str, attention_mode: str, num_class
         else:
             logger.error(f"Invalid attention mode: {attention_mode}")
             raise ValueError(f"Invalid attention mode: {attention_mode}")
+    
     return model
