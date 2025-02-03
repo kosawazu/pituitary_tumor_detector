@@ -75,24 +75,24 @@ def setup_device(model: nn.Module, model_path: Path = model_path) -> nn.Module:
     return device, model
 
 
-def setup_fcn_model(model_name: str, attention_mode: str, num_classes: int = 3) -> nn.Module:
-    """
-    モデルのロード（事前学習済みのモデルをファインチューニング）
-    """
-    model_dict = {
-        "fcn_resnet50": models.segmentation.fcn_resnet50(pretrained=None),
-        "fcn_resnet101": models.segmentation.fcn_resnet101(pretrained=None),
-        "deeplabv3_resnet101": models.segmentation.deeplabv3_resnet101(pretrained=False),
-        "fcn_bot_resnet101": fcn_bot_resnet101(num_classes),
-        "vit_b_16_segmentation": vit_segmentation(num_classes)
-    }
-    if model_name not in model_dict:
-        logger.error(f"Invalid model_name '{model_name}'.")
-        raise ValueError(f"Invalid model_name '{model_name}'.")
+# def setup_fcn_model(model_name: str, attention_mode: str, num_classes: int = 3) -> nn.Module:
+#     """
+#     モデルのロード（事前学習済みのモデルをファインチューニング）
+#     """
+#     model_dict = {
+#         "fcn_resnet50": models.segmentation.fcn_resnet50(weights=None),
+#         "fcn_resnet101": models.segmentation.fcn_resnet101(weights=None),
+#         "deeplabv3_resnet101": models.segmentation.deeplabv3_resnet101(weights=None),
+#         "fcn_bot_resnet101": fcn_bot_resnet101(num_classes),
+#         "vit_b_16_segmentation": vit_segmentation(num_classes)
+#     }
+#     if model_name not in model_dict:
+#         logger.error(f"Invalid model_name '{model_name}'.")
+#         raise ValueError(f"Invalid model_name '{model_name}'.")
     
-    model = model_dict[model_name]
-    model = tune_model(model, model_name, attention_mode, num_classes)
-    return model
+#     model = model_dict[model_name]
+#     model = tune_model(model, model_name, attention_mode, num_classes)
+#     return model
 
 def tune_model(model: nn.Module, model_name: str, attention_mode: str, num_classes: int = 3) -> nn.Module:
     """

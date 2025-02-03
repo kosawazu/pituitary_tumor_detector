@@ -5,7 +5,6 @@ from pathlib import Path
 import sys
 import cv2
 import torch
-from torchvision import models, transforms
 import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -20,7 +19,8 @@ from typing import Callable, Tuple, List, Dict
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # 自作モジュール
 from segmentation import transform
-from utils.model_utils import setup_fcn_model, setup_device
+from utils.model_utils import setup_device, tune_model
+from torchvision import models
 from segment_utils.dataset_utils import CLASS_MAPPING
 from segment_utils.image_processing import COLORS, GRADIENT_COLORS
 logger = logging.getLogger(__name__)
@@ -44,11 +44,14 @@ def main(args):
     else:
         logger.info(f"Model file found at: {model_path}")
     class_num = len(CLASS_MAPPING)
-    model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
+    model = models.segmentation.deeplabv3_resnet101(pretrained=False)
+    model = tune_model(model, model_name, attention_mode, num_classes=class_num)
     device, model = setup_device(model, model_path=model_path)
     model.eval()
     # カメラの初期化
     process_camera_feed(model, device, transform)
+
+
 
 def process_camera_feed(model, device, transform):
     cap = cv2.VideoCapture(0)  # カメラを開く
