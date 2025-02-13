@@ -52,89 +52,117 @@ def main(args):
     process_camera_feed(model, device, transform)
 
 
+import cv2
+import time
+
+
+def list_cameras(max_test=10):
+    """利用可能なカメラのリストを取得"""
+    available_cameras = []
+    for i in range(max_test):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            available_cameras.append(i)
+            cap.release()
+            time.sleep(0.1)
+    return available_cameras
+
+def select_camera():
+    """ユーザーにカメラを選ばせる"""
+    cameras = list_cameras()
+    if not cameras:
+        print("利用可能なカメラが見つかりません")
+        return None
+
+    print("\n利用可能なカメラ一覧:")
+    for i, cam in enumerate(cameras):
+        print(f"  {i}: Camera {cam}")
+
+    while True:
+        try:
+            selected_index = int(input("\n使用するカメラの番号を選択してください: "))
+            if 0 <= selected_index < len(cameras):
+                return cameras[selected_index]
+            else:
+                print("無効な選択肢です。もう一度入力してください。")
+        except ValueError:
+            print("数字を入力してください。")
 
 def process_camera_feed(model, device, transform):
-    cap = cv2.VideoCapture(0)  # カメラを開く
-    if not cap.isOpened():
-        print("カメラを開けません")
-        return
-    # 変数の初期化
-    thresholds = [0.85, 0.90, 0.95]
-    colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
-    gradient_colors_bgr = [rgb_to_bgr(color) for color in GRADIENT_COLORS]
-    is_paused = False
-    last_process_time = time.time()
-    cv2.namedWindow('Segmentation Result', cv2.WINDOW_NORMAL)
+    """選択したカメラを使用する処理"""
     while True:
-        if not is_paused:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            current_time = time.time()
-            if current_time - last_process_time >= 1.0:  # 1秒ごとに処理
-                # セグメンテーション処理
-                segmentation_frame = process_frame(
-                    frame, model, device, transform, 
-                    thresholds, colors_bgr, gradient_colors_bgr
-                )
-                last_process_time = current_time
-                # 結果の表示
+        camera_id = select_camera()
+        if camera_id is None:
+            return  # カメラがない場合は終了
+        
+        cap = cv2.VideoCapture(camera_id)
+        if not cap.isOpened():
+            print(f"カメラ {camera_id} を開けませんでした。別のカメラを選んでください。")
+            continue
+
+        print(f"Camera {camera_id} を使用します")
+        
+        is_paused = False  # 一時停止フラグ
+        cv2.namedWindow('Segmentation Result', cv2.WINDOW_NORMAL)
+
+        while cap.isOpened():
+            if not is_paused:
+                ret, frame = cap.read()
+                if not ret:
+                    print("フレームを取得できません")
+                    break
+                
+                # セグメンテーション処理を行い、結果を得る
+                segmentation_frame = process_frame(frame, model, device, transform)
+
+                # セグメンテーション結果を表示
                 cv2.imshow('Segmentation Result', segmentation_frame)
-        # キー入力の処理
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
-            break
-        elif key == 32:  # スペースキー
-            is_paused = not is_paused
-    cap.release()
-    cv2.destroyAllWindows()
+
+            key = cv2.waitKey(1) & 0xFF
+            print(f"Key Pressed: {key}")  # キーが取得できているか確認用
+
+            if key == ord('q'):  # `q` で終了
+                cap.release()
+                cv2.destroyAllWindows()
+                return
+            elif key == 32:  # スペースキーで一時停止 / 再開
+                is_paused = not is_paused
+
+        cap.release()
+        cv2.destroyAllWindows()
 
 # RGB から BGR への変換関数
 def rgb_to_bgr(color):
     return (color[2], color[1], color[0])
-def process_frame(
-    frame: np.ndarray, 
-    model: nn.Module, 
-    device: torch.device, 
-    transform: Callable[[Image.Image], Tensor], 
-    thresholds: List[float], 
-    colors_bgr: Dict[int, Tuple[int, int, int]], 
-    gradient_colors_bgr: List[Tuple[int, int, int]]
-) -> np.ndarray:
-    original_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    input_tensor = transform(img)
-    input_batch = input_tensor.unsqueeze(0).to(device)
+
+def process_frame(frame, model, device, transform):
+    """フレームをセグメンテーション処理"""
+    original_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # OpenCVからRGB変換
+    img = Image.fromarray(original_image)
+    
+    input_tensor = transform(img).unsqueeze(0).to(device)
     with torch.no_grad():
-        output = model(input_batch)['out']
+        output = model(input_tensor)['out']
+
+    # 出力結果をサイズ変更
     output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='bilinear', align_corners=False)
     output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
-    probabilities = F.softmax(output_resized, dim=1).cpu().numpy()
-    max_prob = probabilities[0].max(axis=0)
-    segmentation_mask = create_segmentation_mask(output_predictions, max_prob, thresholds, colors_bgr, gradient_colors_bgr)
+
+    # 結果のマスク作成とカラー処理
+    segmentation_mask = create_segmentation_mask(output_predictions)
     segmentation_image = Image.fromarray(segmentation_mask)
-    segmentation_image_resized = segmentation_image.resize(original_image.size, resample=Image.NEAREST)
-    blended_image = Image.blend(original_image, segmentation_image_resized, alpha=0.4)
+
+    # 元の画像に重ね合わせ
+    blended_image = Image.blend(img, segmentation_image, alpha=0.4)
     return cv2.cvtColor(np.array(blended_image), cv2.COLOR_RGB2BGR)
-def create_segmentation_mask(
-    output_predictions: np.ndarray, 
-    max_prob: np.ndarray, 
-    thresholds: List[float], 
-    colors_bgr: Dict[int, Tuple[int, int, int]], 
-    gradient_colors_bgr: List[Tuple[int, int, int]]
-) -> np.ndarray:
-    segmentation_mask = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
-    for class_id, color in colors_bgr.items():
-        if class_id == 0:
-            continue
-        elif class_id == 4:
-            mask = output_predictions == class_id
-            segmentation_mask[mask & (max_prob < thresholds[0])] = gradient_colors_bgr[0]
-            segmentation_mask[mask & (max_prob >= thresholds[0]) & (max_prob < thresholds[1])] = gradient_colors_bgr[1]
-            segmentation_mask[mask & (max_prob >= thresholds[1])] = gradient_colors_bgr[2]
-        else:
-            mask = output_predictions == class_id
-            segmentation_mask[mask] = color[::-1]
+
+def create_segmentation_mask(output_predictions):
+    """セグメンテーションのマスクを作成"""
+    # セグメンテーションマスクを適切に処理して作成
+    segmentation_mask = np.zeros((output_predictions.shape[0], output_predictions.shape[1], 3), dtype=np.uint8)
+    for class_id in range(1, 5):  # 仮のクラスID (例: 1-4)
+        mask = output_predictions == class_id
+        segmentation_mask[mask] = (255, 0, 0)  # 例えばクラスごとに色を割り当てる
     return segmentation_mask
 def get_screen_resolution():
     """画面の解像度を取得する関数"""
