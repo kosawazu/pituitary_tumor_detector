@@ -56,32 +56,6 @@ def main(args):
     # カメラの初期化
     process_camera_feed(model, device, transform)
 
-
-
-# def get_camera_name(camera_id):
-#     """カメラの名称を取得する"""
-#     cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)  # DirectShow を指定（Windows向け）
-#     if not cap.isOpened():
-#         return f"Unknown Camera {camera_id}"
-    
-#     # 一部の環境では名称が取得できないこともある
-#     name = cap.get(cv2.CAP_PROP_BACKEND)  # ここではバックエンド情報を代替利用
-#     cap.release()
-    
-#     return f"Camera {camera_id} (Backend {int(name)})"
-
-# def list_cameras_with_names(max_test=5):
-#     """利用可能なカメラの ID と名称を取得"""
-#     available_cameras = []
-#     for i in range(max_test):
-#         cap = cv2.VideoCapture(i)
-#         if cap.isOpened():
-#             name = get_camera_name(i)
-#             available_cameras.append((i, name))  # (ID, 名前) のタプル
-#             cap.release()
-#             time.sleep(0.1)
-#     return available_cameras
-
 def get_camera_list():
     """WindowsのDirectShowを利用してカメラの名称を取得"""
     graph = FilterGraph()
@@ -146,27 +120,6 @@ def select_camera_gui():
     selected_camera = {"id": None}
     root.mainloop()
     return selected_camera["id"]
-
-# def select_camera():
-#     """ユーザーにカメラを選ばせる"""
-#     cameras = list_cameras()
-#     if not cameras:
-#         print("利用可能なカメラが見つかりません")
-#         return None
-
-#     print("\n利用可能なカメラ一覧:")
-#     for i, cam in enumerate(cameras):
-#         print(f"  {i}: Camera {cam}")
-
-#     while True:
-#         try:
-#             selected_index = int(input("\n使用するカメラの番号を選択してください: "))
-#             if 0 <= selected_index < len(cameras):
-#                 return cameras[selected_index]
-#             else:
-#                 print("無効な選択肢です。もう一度入力してください。")
-#         except ValueError:
-#             print("数字を入力してください。")
 
 def process_camera_feed(model, device, transform):
     """GUIを使ってカメラを選択し、そのカメラで処理を行う"""
