@@ -56,24 +56,33 @@ def main(args):
     process_camera_feed(model, device, transform)
 
 
-import cv2
-import time
+def get_camera_name(camera_id):
+    """カメラの名称を取得する"""
+    cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)  # DirectShow を指定（Windows向け）
+    if not cap.isOpened():
+        return f"Unknown Camera {camera_id}"
+    
+    # 一部の環境では名称が取得できないこともある
+    name = cap.get(cv2.CAP_PROP_BACKEND)  # ここではバックエンド情報を代替利用
+    cap.release()
+    
+    return f"Camera {camera_id} (Backend {int(name)})"
 
-
-def list_cameras(max_test=5):
-    """利用可能なカメラのリストを取得"""
+def list_cameras_with_names(max_test=5):
+    """利用可能なカメラの ID と名称を取得"""
     available_cameras = []
     for i in range(max_test):
         cap = cv2.VideoCapture(i)
         if cap.isOpened():
-            available_cameras.append(i)
+            name = get_camera_name(i)
+            available_cameras.append((i, name))  # (ID, 名前) のタプル
             cap.release()
             time.sleep(0.1)
     return available_cameras
 
 def select_camera_gui():
     """GUIでカメラを選択するウィンドウを表示"""
-    cameras = list_cameras()
+    cameras = list_cameras_with_names()
     if not cameras:
         messagebox.showerror("エラー", "利用可能なカメラが見つかりません")
         return None
@@ -83,20 +92,28 @@ def select_camera_gui():
         if not selected_idx:
             messagebox.showwarning("警告", "カメラを選択してください")
             return
-        selected_camera["id"] = cameras[selected_idx[0]]
+        selected_camera["id"] = cameras[selected_idx[0]][0]  # ID を保存
         root.destroy()
 
     root = tk.Tk()
     root.title("カメラ選択")
-    root.geometry("300x200")
 
-    tk.Label(root, text="使用するカメラを選択").pack(pady=5)
+    # 画面サイズの取得
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    # ウィンドウサイズを画面の半分に設定
+    window_width = screen_width // 2
+    window_height = screen_height // 2
+    root.geometry(f"{window_width}x{window_height}+{window_width//2}+{window_height//2}")  # 画面中央に配置
+
+    tk.Label(root, text="使用するカメラを選択").pack(pady=10)
     listbox = tk.Listbox(root, selectmode=tk.SINGLE)
-    for cam in cameras:
-        listbox.insert(tk.END, f"Camera {cam}")
-    listbox.pack(pady=5)
+    for _, name in cameras:
+        listbox.insert(tk.END, name)  # カメラ名を表示
+    listbox.pack(pady=10, fill=tk.BOTH, expand=True)
 
-    tk.Button(root, text="選択", command=on_select).pack(pady=5)
+    tk.Button(root, text="選択", command=on_select).pack(pady=10)
     
     selected_camera = {"id": None}
     root.mainloop()

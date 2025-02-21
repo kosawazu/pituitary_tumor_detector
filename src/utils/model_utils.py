@@ -61,6 +61,7 @@ def setup_device(model: nn.Module, model_path: Path = model_path) -> nn.Module:
         logger.info("CUDA is not available. Using CPU.")
     
     model.to(device)
+    
     try:
         if model_path is not None:
             logger.info(f"Loading model from {model_path}...")
