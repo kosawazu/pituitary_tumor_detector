@@ -119,7 +119,7 @@ def process_camera_feed(model, device, transform):
                 cv2.imshow('Segmentation Result', segmentation_frame)
 
             key = cv2.waitKey(1) & 0xFF
-            print(f"Key Pressed: {key}")  # キーが取得できているか確認用
+            # print(f"Key Pressed: {key}")  # キーが取得できているか確認用
 
             if key == ord('q'):  # `q` で終了
                 cap.release()
@@ -147,22 +147,40 @@ def process_frame(frame, model, device, transform):
     # 出力結果をサイズ変更
     output_resized = F.interpolate(output, size=(frame.shape[0], frame.shape[1]), mode='bilinear', align_corners=False)
     output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
+    max_prob = F.softmax(output_resized, dim=1).max(1)[0].squeeze().cpu().numpy()  # 最大確率を取得
+
+    # 閾値、色、グラデーションを設定
+    thresholds = [0.3, 0.6]  # 例: 閾値の設定
+    colors_bgr = {1: (255, 0, 0), 2: (0, 255, 0), 3: (0, 0, 255)}  # クラスごとの色
+    gradient_colors_bgr = [(255, 255, 0), (0, 255, 255), (255, 0, 255)]  # グラデーション色
 
     # 結果のマスク作成とカラー処理
-    segmentation_mask = create_segmentation_mask(output_predictions)
+    segmentation_mask = create_segmentation_mask(output_predictions, max_prob, thresholds, colors_bgr, gradient_colors_bgr)
     segmentation_image = Image.fromarray(segmentation_mask)
 
     # 元の画像に重ね合わせ
     blended_image = Image.blend(img, segmentation_image, alpha=0.4)
     return cv2.cvtColor(np.array(blended_image), cv2.COLOR_RGB2BGR)
 
-def create_segmentation_mask(output_predictions):
-    """セグメンテーションのマスクを作成"""
-    # セグメンテーションマスクを適切に処理して作成
-    segmentation_mask = np.zeros((output_predictions.shape[0], output_predictions.shape[1], 3), dtype=np.uint8)
-    for class_id in range(1, 5):  # 仮のクラスID (例: 1-4)
-        mask = output_predictions == class_id
-        segmentation_mask[mask] = (255, 0, 0)  # 例えばクラスごとに色を割り当てる
+def create_segmentation_mask(
+    output_predictions: np.ndarray, 
+    max_prob: np.ndarray, 
+    thresholds: List[float], 
+    colors_bgr: Dict[int, Tuple[int, int, int]], 
+    gradient_colors_bgr: List[Tuple[int, int, int]]
+) -> np.ndarray:
+    segmentation_mask = np.zeros((*output_predictions.shape, 3), dtype=np.uint8)
+    for class_id, color in colors_bgr.items():
+        if class_id == 0:
+            continue
+        elif class_id == 4:
+            mask = output_predictions == class_id
+            segmentation_mask[mask & (max_prob < thresholds[0])] = gradient_colors_bgr[0]
+            segmentation_mask[mask & (max_prob >= thresholds[0]) & (max_prob < thresholds[1])] = gradient_colors_bgr[1]
+            segmentation_mask[mask & (max_prob >= thresholds[1])] = gradient_colors_bgr[2]
+        else:
+            mask = output_predictions == class_id
+            segmentation_mask[mask] = color[::-1]
     return segmentation_mask
 def get_screen_resolution():
     """画面の解像度を取得する関数"""
@@ -172,6 +190,7 @@ def get_screen_resolution():
     except:
         # スクリーン情報を取得できない場合はデフォルト値を返す
         return 1920, 1080
+
 def parse_args():
     # オプションの解析
     parser = argparse.ArgumentParser(description="骨格データの生成")
