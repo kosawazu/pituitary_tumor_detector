@@ -5,3 +5,7 @@ __pycache__/
 /logs
 *.out
 *.txt
+build/
+dist/
+*.log
+*.spec
