@@ -23,6 +23,10 @@ from utils.model_utils import setup_device, tune_model
 from torchvision import models
 from segment_utils.dataset_utils import CLASS_MAPPING
 from segment_utils.image_processing import COLORS, GRADIENT_COLORS
+import tkinter as tk
+from tkinter import messagebox
+
+
 logger = logging.getLogger(__name__)
 def main(args):
     # モデルの設定
@@ -56,7 +60,7 @@ import cv2
 import time
 
 
-def list_cameras(max_test=10):
+def list_cameras(max_test=5):
     """利用可能なカメラのリストを取得"""
     available_cameras = []
     for i in range(max_test):
@@ -67,37 +71,68 @@ def list_cameras(max_test=10):
             time.sleep(0.1)
     return available_cameras
 
-def select_camera():
-    """ユーザーにカメラを選ばせる"""
+def select_camera_gui():
+    """GUIでカメラを選択するウィンドウを表示"""
     cameras = list_cameras()
     if not cameras:
-        print("利用可能なカメラが見つかりません")
+        messagebox.showerror("エラー", "利用可能なカメラが見つかりません")
         return None
 
-    print("\n利用可能なカメラ一覧:")
-    for i, cam in enumerate(cameras):
-        print(f"  {i}: Camera {cam}")
+    def on_select():
+        selected_idx = listbox.curselection()
+        if not selected_idx:
+            messagebox.showwarning("警告", "カメラを選択してください")
+            return
+        selected_camera["id"] = cameras[selected_idx[0]]
+        root.destroy()
 
-    while True:
-        try:
-            selected_index = int(input("\n使用するカメラの番号を選択してください: "))
-            if 0 <= selected_index < len(cameras):
-                return cameras[selected_index]
-            else:
-                print("無効な選択肢です。もう一度入力してください。")
-        except ValueError:
-            print("数字を入力してください。")
+    root = tk.Tk()
+    root.title("カメラ選択")
+    root.geometry("300x200")
+
+    tk.Label(root, text="使用するカメラを選択").pack(pady=5)
+    listbox = tk.Listbox(root, selectmode=tk.SINGLE)
+    for cam in cameras:
+        listbox.insert(tk.END, f"Camera {cam}")
+    listbox.pack(pady=5)
+
+    tk.Button(root, text="選択", command=on_select).pack(pady=5)
+    
+    selected_camera = {"id": None}
+    root.mainloop()
+    return selected_camera["id"]
+
+# def select_camera():
+#     """ユーザーにカメラを選ばせる"""
+#     cameras = list_cameras()
+#     if not cameras:
+#         print("利用可能なカメラが見つかりません")
+#         return None
+
+#     print("\n利用可能なカメラ一覧:")
+#     for i, cam in enumerate(cameras):
+#         print(f"  {i}: Camera {cam}")
+
+#     while True:
+#         try:
+#             selected_index = int(input("\n使用するカメラの番号を選択してください: "))
+#             if 0 <= selected_index < len(cameras):
+#                 return cameras[selected_index]
+#             else:
+#                 print("無効な選択肢です。もう一度入力してください。")
+#         except ValueError:
+#             print("数字を入力してください。")
 
 def process_camera_feed(model, device, transform):
-    """選択したカメラを使用する処理"""
+    """GUIを使ってカメラを選択し、そのカメラで処理を行う"""
     while True:
-        camera_id = select_camera()
+        camera_id = select_camera_gui()
         if camera_id is None:
             return  # カメラがない場合は終了
         
         cap = cv2.VideoCapture(camera_id)
         if not cap.isOpened():
-            print(f"カメラ {camera_id} を開けませんでした。別のカメラを選んでください。")
+            messagebox.showerror("エラー", f"カメラ {camera_id} を開けませんでした。別のカメラを選んでください。")
             continue
 
         print(f"Camera {camera_id} を使用します")
@@ -114,13 +149,9 @@ def process_camera_feed(model, device, transform):
                 
                 # セグメンテーション処理を行い、結果を得る
                 segmentation_frame = process_frame(frame, model, device, transform)
-
-                # セグメンテーション結果を表示
                 cv2.imshow('Segmentation Result', segmentation_frame)
 
             key = cv2.waitKey(1) & 0xFF
-            # print(f"Key Pressed: {key}")  # キーが取得できているか確認用
-
             if key == ord('q'):  # `q` で終了
                 cap.release()
                 cv2.destroyAllWindows()
