@@ -138,6 +138,8 @@ def process_camera_feed(model, device, transform):
         print(f"Camera {camera_id} を使用します")
         
         is_paused = False  # 一時停止フラグ
+        last_segmentation_frame = None
+        last_process_time = time.time()
         cv2.namedWindow('Segmentation Result', cv2.WINDOW_NORMAL)
 
         while cap.isOpened():
@@ -146,9 +148,15 @@ def process_camera_feed(model, device, transform):
                 if not ret:
                     print("フレームを取得できません")
                     break
+                current_time = time.time()
+                elapsed_time = current_time - last_process_time
+
+                if elapsed_time >= 1.0 or last_segmentation_frame is None:
+                    last_segmentation_frame = process_frame(frame, model, device, transform)
+                    last_process_time = current_time
                 
                 # セグメンテーション処理を行い、結果を得る
-                segmentation_frame = process_frame(frame, model, device, transform)
+                segmentation_frame = last_segmentation_frame if last_segmentation_frame is not None else frame
                 cv2.imshow('Segmentation Result', segmentation_frame)
 
             key = cv2.waitKey(1) & 0xFF
@@ -183,7 +191,7 @@ def process_frame(frame, model, device, transform):
     # 閾値、色、グラデーションを設定
     thresholds = [0.3, 0.6]  # 例: 閾値の設定
     colors_bgr = {1: (255, 0, 0), 2: (0, 255, 0), 3: (0, 0, 255)}  # クラスごとの色
-    gradient_colors_bgr = [(255, 255, 0), (0, 255, 255), (255, 0, 255)]  # グラデーション色
+    gradient_colors_bgr = [(230, 230, 250), (128, 0, 128), (75, 0, 130)]  # グラデーション色
 
     # 結果のマスク作成とカラー処理
     segmentation_mask = create_segmentation_mask(output_predictions, max_prob, thresholds, colors_bgr, gradient_colors_bgr)
