@@ -152,7 +152,7 @@ def process_camera_feed(model, device, transform, video_path):
                 
                 # セグメンテーション処理を行い、結果を得る
                 segmentation_frame = last_segmentation_frame if last_segmentation_frame is not None else frame
-                cv2.imshow('Segmentation Result', segmentation_frame)
+                cv2.imshow('Segmentation Result', cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR))
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):  # `q` で終了
@@ -171,8 +171,12 @@ def rgb_to_bgr(color):
 
 def process_frame(frame, model, device, transform):
     """フレームをセグメンテーション処理"""
-    original_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # OpenCVからRGB変換
-    img = Image.fromarray(original_image)
+    thresholds = [0.85, 0.90, 0.95]
+    colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
+    gradient_colors_bgr = [rgb_to_bgr(color) for color in GRADIENT_COLORS]
+    
+    original_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))  # OpenCVからRGB変換
+    img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     
     input_tensor = transform(img).unsqueeze(0).to(device)
     with torch.no_grad():
@@ -183,17 +187,12 @@ def process_frame(frame, model, device, transform):
     output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
     max_prob = F.softmax(output_resized, dim=1).max(1)[0].squeeze().cpu().numpy()  # 最大確率を取得
 
-    # 閾値、色、グラデーションを設定
-    thresholds = [0.3, 0.6]  # 例: 閾値の設定
-    colors_bgr = {1: (255, 0, 0), 2: (0, 255, 0), 3: (0, 0, 255)}  # クラスごとの色
-    gradient_colors_bgr = [(230, 230, 250), (128, 0, 128), (75, 0, 130)]  # グラデーション色
-
     # 結果のマスク作成とカラー処理
     segmentation_mask = create_segmentation_mask(output_predictions, max_prob, thresholds, colors_bgr, gradient_colors_bgr)
     segmentation_image = Image.fromarray(segmentation_mask)
-
+    segmentation_image_resized = segmentation_image.resize(original_image.size, resample=Image.NEAREST)
     # 元の画像に重ね合わせ
-    blended_image = Image.blend(img, segmentation_image, alpha=0.4)
+    blended_image = Image.blend(original_image, segmentation_image_resized, alpha=0.4)
     return cv2.cvtColor(np.array(blended_image), cv2.COLOR_RGB2BGR)
 
 def create_segmentation_mask(
