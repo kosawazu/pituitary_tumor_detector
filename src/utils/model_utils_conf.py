@@ -24,19 +24,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# PyInstaller 実行時と通常実行時の base_path の設定
-if getattr(sys, 'frozen', False):  # PyInstaller 実行時
-    base_path = sys._MEIPASS
-    logger.info("Running in PyInstaller environment.")
-else:  # 通常のスクリプト実行時
-    base_path = os.path.dirname(__file__)
-    logger.info("Running in standard Python environment.")
-
 # 修正後のモデルパス取得
-model_path = os.path.join(base_path, "result", "nagoya", "demo_model", "deeplabv3_resnet101", "best_tumor_iou_model.pth")
+model_path = os.path.join("../../", "result", "nagoya", "demo_model", "deeplabv3_resnet101", "best_tumor_iou_model.pth")
 
-# デバッグ用のログを追加
-logger.info(f"Base path: {base_path}")
 logger.info(f"Model path: {model_path}")
 
 # モデルファイルの存在確認
