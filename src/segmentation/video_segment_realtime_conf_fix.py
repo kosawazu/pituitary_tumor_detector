@@ -54,7 +54,8 @@ def main(args):
     model = models.segmentation.deeplabv3_resnet101(pretrained=False)
     model = tune_model(model, model_name, attention_mode, num_classes=class_num)
     device, model = setup_device(model, model_path=model_path)
-    video_path = "../../data/video/test_video.mp4"
+    video_path = "../../data/demo_model/test_video.mp4"
+    
     model.eval()
     # カメラの初期化
     process_camera_feed(model, device, transform, video_path)
