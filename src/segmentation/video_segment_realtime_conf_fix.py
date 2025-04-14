@@ -19,7 +19,7 @@ from typing import Callable, Tuple, List, Dict
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # 自作モジュール
 from segmentation import transform
-from utils.model_utils import setup_device, tune_model
+from utils.model_utils_conf import setup_device, tune_model
 from torchvision import models
 from segment_utils.dataset_utils import CLASS_MAPPING
 from segment_utils.image_processing import COLORS, GRADIENT_COLORS
@@ -38,10 +38,12 @@ def main(args):
         base_path = sys._MEIPASS
         logger.info("Running in PyInstaller environment.")
     else:  # 通常のスクリプト実行時
-        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # src の親ディレクトリを基準に設定
+        # base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # src の親ディレクトリを基準に設定
+        base_path = "../../"  # src の親ディレクトリを基準に設定
         logger.info("Running in standard Python environment.")
-    # モデルファイルのパスを取得
-    model_path = os.path.join(base_path, "result/nagoya/demo_model/deeplabv3_resnet101/best_tumor_iou_model.pth")
+    # model_path = "../../result/nagoya/demo_model/deeplabv3_resnet101/best_tumor_iou_model.pth"
+    model_path = os.path.join(args.model_dir, args.model_name, "best_tumor_iou_model.pth")
+
     # モデルファイルの存在確認
     if not os.path.exists(model_path):
         logger.error(f"Model file not found at: {model_path}")
@@ -52,9 +54,10 @@ def main(args):
     model = models.segmentation.deeplabv3_resnet101(pretrained=False)
     model = tune_model(model, model_name, attention_mode, num_classes=class_num)
     device, model = setup_device(model, model_path=model_path)
+    video_path = "../../data/video/test_video.mp4"
     model.eval()
     # カメラの初期化
-    process_camera_feed(model, device, transform)
+    process_camera_feed(model, device, transform, video_path)
 
 def get_camera_list():
     """WindowsのDirectShowを利用してカメラの名称を取得"""
@@ -121,19 +124,14 @@ def select_camera_gui():
     root.mainloop()
     return selected_camera["id"]
 
-def process_camera_feed(model, device, transform):
+def process_camera_feed(model, device, transform, video_path):
     """GUIを使ってカメラを選択し、そのカメラで処理を行う"""
     while True:
-        camera_id = select_camera_gui()
-        if camera_id is None:
-            return  # カメラがない場合は終了
+        # camera_id = select_camera_gui()
+        # if camera_id is None:
+        #     return  # カメラがない場合は終了
         
-        cap = cv2.VideoCapture(camera_id)
-        if not cap.isOpened():
-            messagebox.showerror("エラー", f"カメラ {camera_id} を開けませんでした。別のカメラを選んでください。")
-            continue
-
-        print(f"Camera {camera_id} を使用します")
+        cap = cv2.VideoCapture(video_path)
         
         is_paused = False  # 一時停止フラグ
         last_segmentation_frame = None
@@ -181,7 +179,6 @@ def process_camera_feed(model, device, transform):
                 except:
                     # エラーが起きたら通常表示（初回など）
                     cv2.imshow('Segmentation Result', cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR))
-
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):  # `q` で終了
