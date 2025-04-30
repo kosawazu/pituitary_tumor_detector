@@ -1,8 +1,8 @@
 #!/bin/bash
 
-if [ $# -ne 6 ]; then
-    echo "Error: Exactly 6 arguments are required."
-    echo "Usage: $0 <model_name> <epochs> <batch_size_list> <learning_rate_list> <patience> <attention_mode>"
+if [ $# -ne 5 ]; then
+    echo "Error: Exactly 5 arguments are required."
+    echo "Usage: $0 <model_name> <epochs> <batch_size_list> <learning_rate_list> <patience>"
     exit 1
 fi
 
@@ -11,7 +11,6 @@ epochs="$2"
 batch_size_list=($3)  # リストとして展開
 learning_rate_list=($4)  # リストとして展開 
 patience="$5"
-attention_mode="$6"
 
 model_files=("best_loss_model" "best_tumor_iou_model" "best_mean_iou_model")
 # model_files=("best_loss_model")
@@ -40,7 +39,7 @@ for batch_size in "${batch_size_list[@]}"; do
     # ログファイル名を定義
     log_file_name="${model_name}_${batch_size}_${learning_rate}.log"
     # トレーニングの実行とログ出力
-    python3 train_fcn.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience" --attention_mode $attention_mode > "${train_log_dir}/${log_file_name}" 2>&1
+    python3 train_fcn.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience" > "${train_log_dir}/${log_file_name}" 2>&1
     
     # トレーニングが正常に終了したかをチェック
     if [ $? -ne 0 ]; then
@@ -50,7 +49,7 @@ for batch_size in "${batch_size_list[@]}"; do
 
     for model_file in "${model_files[@]}"; do
       # テストの実行とログ出力
-      python3 test_fcn.py --model_name "$model_name" --save_model_file "$model_file" --batch_size "$batch_size" --learning_rate "$learning_rate" --attention_mode $attention_mode > "${test_log_dir}/${log_file_name}" 2>&1
+      python3 test_fcn.py --model_name "$model_name" --save_model_file "$model_file" --batch_size "$batch_size" --learning_rate "$learning_rate" > "${test_log_dir}/${log_file_name}" 2>&1
     done
   done
 done
