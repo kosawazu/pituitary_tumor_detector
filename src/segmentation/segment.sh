@@ -28,7 +28,7 @@ for batch_size in "${batch_size_list[@]}"; do
     echo "バッチサイズ: $batch_size, 学習率: $learning_rate"
 
     # フォルダのパスを定義
-    result_folder="../../result/nagoya/training_results/${model_name}/${batch_size}/${learning_rate}"
+    result_folder="../../result/training_results/${model_name}/${batch_size}/${learning_rate}"
     echo "結果保存先のディレクトリ： $result_folder"
     # フォルダが存在する場合はスキップ
     if [ -d "$result_folder" ]; then
@@ -39,7 +39,7 @@ for batch_size in "${batch_size_list[@]}"; do
     # ログファイル名を定義
     log_file_name="${model_name}_${batch_size}_${learning_rate}.log"
     # トレーニングの実行とログ出力
-    python3 train_fcn.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience" > "${train_log_dir}/${log_file_name}" 2>&1
+    python3 train.py --epochs "$epochs" --model_name "$model_name" --batch_size "$batch_size" --learning_rate "$learning_rate" --patience "$patience" > "${train_log_dir}/${log_file_name}" 2>&1
     
     # トレーニングが正常に終了したかをチェック
     if [ $? -ne 0 ]; then
@@ -49,7 +49,7 @@ for batch_size in "${batch_size_list[@]}"; do
 
     for model_file in "${model_files[@]}"; do
       # テストの実行とログ出力
-      python3 test_fcn.py --model_name "$model_name" --save_model_file "$model_file" --batch_size "$batch_size" --learning_rate "$learning_rate" > "${test_log_dir}/${log_file_name}" 2>&1
+      python3 test.py --model_name "$model_name" --save_model_file "$model_file" --batch_size "$batch_size" --learning_rate "$learning_rate" > "${test_log_dir}/${log_file_name}" 2>&1
     done
   done
 done
