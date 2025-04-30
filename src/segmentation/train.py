@@ -48,7 +48,7 @@ from segment_utils.misc import(
 )
 #モデル関連
 from utils.model_utils import (
-    setup_fcn_model,
+    setup_model,
     setup_device
 )
 #学習関連
@@ -84,7 +84,7 @@ def main(args):
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
 
     # COCOデータセットで事前学習されたモデルをロード
-    model = setup_fcn_model(model_name, num_classes=class_num)
+    model = setup_model(model_name, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model)
     transform = get_transform(args.image_size)

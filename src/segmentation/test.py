@@ -36,7 +36,7 @@ from segment_utils.metrics import(
 )
 
 from utils.model_utils import (
-    setup_fcn_model,
+    setup_model,
     setup_device
 )
 
@@ -71,7 +71,7 @@ def main(args):
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
     logger.info(f"{model_path}を読み込みます")
-    model = setup_fcn_model(model_name, num_classes=class_num)
+    model = setup_model(model_name, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model, model_path=model_path)
 

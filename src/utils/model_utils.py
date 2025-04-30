@@ -54,7 +54,7 @@ def setup_device(
     return device, model
 
 
-def setup_fcn_model(model_name: str, num_classes: int = 3) -> nn.Module:
+def setup_model(model_name: str, num_classes: int = 3) -> nn.Module:
     """
     モデルのロード（事前学習済みのモデルをファインチューニング）
     """
