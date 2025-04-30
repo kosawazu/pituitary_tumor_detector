@@ -43,13 +43,12 @@ logger = logging.getLogger(__name__)
 def main(args):
     save_dir = args.save_dir
     model_name = args.model_name
-    attention_mode = args.attention_mode
     video_path = args.video_path
     model_path = args.model_dir / Path(model_name, "best_tumor_iou_model.pth")
     output_video_path = save_dir / Path("segment_video", model_name)
     class_num = len(CLASS_MAPPING)
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
-    model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
+    model = setup_fcn_model(model_name, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model, model_path=model_path)
 
@@ -247,19 +246,13 @@ def get_screen_resolution():
 
 def parse_args():
     # オプションの解析
-    parser = argparse.ArgumentParser(description="骨格データの生成")
+    parser = argparse.ArgumentParser(description="動画データのセグメント")
 
     parser.add_argument("--model_name",
                         type=str,
                         default="fcn_resnet50",
-                        choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19", "deeplabv3_resnet101"],
-                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19, deeplabv3_resnet101."
-                        )
-    parser.add_argument('--attention_mode', 
-                        type=str,
-                        default="none",
-                        choices=["none", "self_attention", "channel_attention", "both"],
-                        help='attention_layerの使用するかを指定する変数'
+                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "vit_b_16_segmentation", "fcn_bot_resnet101"],
+                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101, vit_b_16_segmentation."
                         )
     parser.add_argument("--video_path",
                         type=Path,
@@ -268,12 +261,12 @@ def parse_args():
                         )
     parser.add_argument("--save_dir",
                         type=Path,
-                        default="../../result/nagoya",
+                        default="../../result",
                         help='結果を保存するディレクトリパス'
                         )
     parser.add_argument("--model_dir",
                         type=Path,
-                        default="../../result/nagoya/demo_model",
+                        default="../../result/demo_model",
                         help='転移学習モデルパラメータのパス'
                         )    
     parser.add_argument(

@@ -7,7 +7,6 @@ import torch.nn as nn
 from torchvision import models
 # 自作モジュールのインポート
 try:
-    from utils.attention_layers import SelfAttention, ChannelAttention
     from utils.botnet import fcn_bot_resnet101
     from utils.vit import vit_segmentation
 except ImportError as e:
@@ -24,29 +23,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# PyInstaller 実行時と通常実行時の base_path の設定
-if getattr(sys, 'frozen', False):  # PyInstaller 実行時
-    base_path = sys._MEIPASS
-    logger.info("Running in PyInstaller environment.")
-else:  # 通常のスクリプト実行時
-    base_path = os.path.dirname(__file__)
-    logger.info("Running in standard Python environment.")
 
-# 修正後のモデルパス取得
-model_path = os.path.join(base_path, "result", "nagoya", "demo_model", "deeplabv3_resnet101", "best_tumor_iou_model.pth")
-
-# デバッグ用のログを追加
-logger.info(f"Base path: {base_path}")
-logger.info(f"Model path: {model_path}")
-
-# モデルファイルの存在確認
-if not os.path.exists(model_path):
-    logger.error(f"Model file not found at: {model_path}")
-    raise FileNotFoundError(f"Model file not found at: {model_path}")
-else:
-    logger.info(f"Model file found at: {model_path}")
-
-def setup_device(model: nn.Module, model_path: Path = model_path) -> nn.Module:
+def setup_device(model: nn.Module, model_path: Path = None) -> nn.Module:
     """
     モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。
     """
@@ -74,26 +52,6 @@ def setup_device(model: nn.Module, model_path: Path = model_path) -> nn.Module:
         logger.error(f"Error loading model from {model_path}: {e}")
         raise
     return device, model
-
-
-# def setup_fcn_model(model_name: str, attention_mode: str, num_classes: int = 3) -> nn.Module:
-#     """
-#     モデルのロード（事前学習済みのモデルをファインチューニング）
-#     """
-#     model_dict = {
-#         "fcn_resnet50": models.segmentation.fcn_resnet50(weights=None),
-#         "fcn_resnet101": models.segmentation.fcn_resnet101(weights=None),
-#         "deeplabv3_resnet101": models.segmentation.deeplabv3_resnet101(weights=None),
-#         "fcn_bot_resnet101": fcn_bot_resnet101(num_classes),
-#         "vit_b_16_segmentation": vit_segmentation(num_classes)
-#     }
-#     if model_name not in model_dict:
-#         logger.error(f"Invalid model_name '{model_name}'.")
-#         raise ValueError(f"Invalid model_name '{model_name}'.")
-    
-#     model = model_dict[model_name]
-#     model = tune_model(model, model_name, attention_mode, num_classes)
-#     return model
 
 def tune_model(model: nn.Module, model_name: str, num_classes: int = 3) -> nn.Module:
     """

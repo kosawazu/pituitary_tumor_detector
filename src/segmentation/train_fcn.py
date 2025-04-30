@@ -369,7 +369,7 @@ def eval_dataset_and_save_images(
 
 def parse_args():
     # オプションの解析
-    parser = argparse.ArgumentParser(description="脳下垂体腫瘍の検知")
+    parser = argparse.ArgumentParser(description="セグメンテーションモデルの学習")
 
     parser.add_argument("--data_dir",
                         type=Path,

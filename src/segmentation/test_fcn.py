@@ -206,7 +206,7 @@ def get_test_image_paths_and_labels(
 
 def parse_args():
     # オプションの解析
-    parser = argparse.ArgumentParser(description="骨格データの生成")
+    parser = argparse.ArgumentParser(description="セグメンテーションモデルの推論")
 
     parser.add_argument("--data_dir",
                         type=Path,

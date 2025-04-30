@@ -5,21 +5,16 @@ from pathlib import Path
 import sys
 import cv2
 import torch
-import torch.optim as optim
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import numpy as np
 from PIL import Image
-import matplotlib.pyplot as plt
-from torch import Tensor
 import time
 from screeninfo import get_monitors
-from typing import Callable, Tuple, List, Dict
+from typing import Tuple, List, Dict
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # 自作モジュール
 from segmentation import transform
-from utils.model_utils import setup_device, tune_model
+from utils.model_utils_real import setup_device, tune_model
 from torchvision import models
 from segment_utils.dataset_utils import CLASS_MAPPING
 from segment_utils.image_processing import COLORS, GRADIENT_COLORS
@@ -32,7 +27,6 @@ logger = logging.getLogger(__name__)
 def main(args):
     # モデルの設定
     model_name = args.model_name
-    attention_mode = args.attention_mode
     # PyInstaller 実行時と通常実行時の base_path の設定
     if getattr(sys, 'frozen', False):  # PyInstaller 実行時
         base_path = sys._MEIPASS
@@ -41,7 +35,7 @@ def main(args):
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # src の親ディレクトリを基準に設定
         logger.info("Running in standard Python environment.")
     # モデルファイルのパスを取得
-    model_path = os.path.join(base_path, "result/nagoya/demo_model/deeplabv3_resnet101/best_tumor_iou_model.pth")
+    model_path = os.path.join(base_path, "result/demo_model/deeplabv3_resnet101/best_tumor_iou_model.pth")
     # モデルファイルの存在確認
     if not os.path.exists(model_path):
         logger.error(f"Model file not found at: {model_path}")
@@ -50,7 +44,7 @@ def main(args):
         logger.info(f"Model file found at: {model_path}")
     class_num = len(CLASS_MAPPING)
     model = models.segmentation.deeplabv3_resnet101(pretrained=False)
-    model = tune_model(model, model_name, attention_mode, num_classes=class_num)
+    model = tune_model(model, model_name, num_classes=class_num)
     device, model = setup_device(model, model_path=model_path)
     model.eval()
     # カメラの初期化
@@ -255,18 +249,12 @@ def get_screen_resolution():
 
 def parse_args():
     # オプションの解析
-    parser = argparse.ArgumentParser(description="骨格データの生成")
+    parser = argparse.ArgumentParser(description="リアルタイム処理")
     parser.add_argument("--model_name",
                         type=str,
-                        default="deeplabv3_resnet101",
-                        choices=["fcn_resnet50", "fcn_resnet101", "fcn_vgg16", "fcn_vgg19", "deeplabv3_resnet101"],
-                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_vgg16, fcn_vgg19, deeplabv3_resnet101."
-                        )
-    parser.add_argument('--attention_mode', 
-                        type=str,
-                        default="none",
-                        choices=["none", "self_attention", "channel_attention", "both"],
-                        help='attention_layerの使用するかを指定する変数'
+                        default="fcn_resnet50",
+                        choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "vit_b_16_segmentation", "fcn_bot_resnet101"],
+                        help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101, vit_b_16_segmentation."
                         )
     parser.add_argument("--video_path",
                         type=Path,
@@ -275,12 +263,12 @@ def parse_args():
                         )
     parser.add_argument("--save_dir",
                         type=Path,
-                        default="../../result/nagoya",
+                        default="../../result",
                         help='結果を保存するディレクトリパス'
                         )
     parser.add_argument("--model_dir",
                         type=Path,
-                        default="../../result/nagoya/demo_model",
+                        default="../../result/demo_model",
                         help='転移学習モデルパラメータのパス'
                         )    
     parser.add_argument(
