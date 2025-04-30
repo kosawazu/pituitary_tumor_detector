@@ -6,18 +6,17 @@ import json
 import torch
 import sys
 from PIL import Image
-import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageDraw
 import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix
-import math
 from typing import Tuple, List
 sys.path.append("../")
 # 自作モジュール
 
 from segment_utils.dataset_utils import(
     get_transform,
+    CLASS_MAPPING,
 )
 
 from segment_utils.image_processing import(
@@ -51,10 +50,9 @@ def main(args):
     data_dir = args.data_dir 
     class_num = args.class_num
     model_name = args.model_name
-    attention_mode = args.attention_mode
     model_file = args.save_model_file
-    model_data_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
-    test_text_file_path = model_data_dir / Path(f"others/split_dataset/test_filenames.txt")
+    model_data_dir = args.save_dir / Path("training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
+    test_text_file_path = model_data_dir / Path(f"others/split_dataset/val_filenames.txt")
     test_result_dir = model_data_dir / Path("test", model_file)
     segment_save_dir = test_result_dir / Path("segment_image")
     blended_segment_save_dir = test_result_dir / Path("blend_image")
@@ -68,12 +66,12 @@ def main(args):
     os.makedirs(blended_segment_save_dir, exist_ok=True)
     os.makedirs(metrics_segment_save_dir, exist_ok=True)
     os.makedirs(gradation_segment_save_dir, exist_ok=True)
-    class_names = ['background', 'sellar', 'sella', 'pituitary', 'tumor']
+    class_names = [CLASS_MAPPING[i] for i in sorted(CLASS_MAPPING.keys())]
     num_classes = len(class_names)
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
     logger.info(f"{model_path}を読み込みます")
-    model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
+    model = setup_fcn_model(model_name, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model, model_path=model_path)
 
@@ -116,8 +114,6 @@ def main(args):
     all_ground_truths = np.concatenate(all_ground_truths)
     all_predictions = np.concatenate(all_predictions)
     avg_ious, miou = calculate_average_ious_and_miou(all_ious)
-    logger.info(f"{avg_ious=}")
-    logger.info(f"{miou=}")
     # ピクセル単位の混同行列を作成
     conf_matrix = confusion_matrix(all_ground_truths, all_predictions, labels=list(range(num_classes)))
     # iouを混同行列から計算
@@ -207,6 +203,7 @@ def get_test_image_paths_and_labels(
         labels.append(mask)
 
     return image_paths, labels
+
 def parse_args():
     # オプションの解析
     parser = argparse.ArgumentParser(description="骨格データの生成")
@@ -249,12 +246,6 @@ def parse_args():
                         default=(224, 224),
                         help='画像サイズ (height, width)'
                         )
-    parser.add_argument('--attention_mode', 
-                        type=str,
-                        default="none",
-                        choices=["none", "self_attention", "channel_attention", "both"],
-                        help='attention_layerの使用するかを指定する変数'
-                        )
     parser.add_argument(
                         '--loglevel',
                         default='INFO',  # デフォルトのログレベルをINFOに設定
@@ -269,8 +260,6 @@ if __name__ == "__main__":
     logger.info("loglevel: %s", args.loglevel)
     lformat = "%(name)s <L%(lineno)s> [%(levelname)s] %(message)s"
     logging.basicConfig(
-        # filename='../../train_fcn.log',  # 出力先ファイルを指定
-        # stream=sys.stdout,  # 標準出力に出力
         level=logging.INFO,
         filemode='w',  # ファイルを上書きモードに設定
         format=lformat,

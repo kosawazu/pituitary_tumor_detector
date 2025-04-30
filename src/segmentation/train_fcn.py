@@ -70,10 +70,9 @@ def main(args):
     data_dir = args.data_dir
     mask_dir = args.mask_dir
     model_name = args.model_name
-    save_dir = args.save_dir / Path("nagoya", "training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
+    save_dir = args.save_dir / Path("training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
     epochs = args.epochs
     class_num = args.class_num
-    attention_mode = args.attention_mode
     train_image_dir = data_dir / Path("img")
     model_save_dir = save_dir / Path( "model")
     graph_save_dir = save_dir / Path("graph")
@@ -82,11 +81,10 @@ def main(args):
     os.makedirs(model_save_dir, exist_ok=True)
     os.makedirs(graph_save_dir, exist_ok=True)
     os.makedirs(segment_dir, exist_ok=True)
-    class_names = ['background', 'sellar', 'sella', 'pituitary', 'tumor']
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
 
     # COCOデータセットで事前学習されたモデルをロード
-    model = setup_fcn_model(model_name, attention_mode, num_classes=class_num)
+    model = setup_fcn_model(model_name, num_classes=class_num)
     # デバイスの設定（GPUが利用可能なら使用）
     device, model = setup_device(model)
     transform = get_transform(args.image_size)
@@ -95,21 +93,10 @@ def main(args):
     #データ数の確認
     logger.info(f"Total samples in dataset: {len(dataset)}")
 
-    # サンプルを取得して確認
-    sample_idx = 0  # 確認したいインデックス
-    image, mask, filename = dataset[sample_idx]  # 0番目のサンプルを取得
-
-    if image is None or mask is None:
-        logger.debug(f"Sample {sample_idx} has no valid data.")
     # データセットを指定した比率でtrain,val,testに分割をし、それぞれのデータローダーの作成
     train_dataset, valid_dataset, _ = split_dataset(dataset, output_dir=others_save_dir / "split_dataset")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=0)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size * 2, shuffle=True, pin_memory=True, num_workers=0)
-
-    # マスクのラベルが指定したクラス数に収まっているか確認する例
-    mask = train_dataset[10][1]  # 0番目のサンプルのマスクを取得
-    # mask = map_mask_to_four_classes(mask)  # クラスのマッピングを実行
-    logger.debug(f'Categories after mapping: {mask.unique()}')  # マスク内のユニークなクラスラベルを確認
 
 
     # 実行時のモデルアーキテクチャとデータの可視化(確認用)
@@ -123,11 +110,15 @@ def main(args):
     early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
 
     #モデルの学習と学習曲線の出力
-    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, class_names, train_image_dir, graph_save_dir, model_save_dir, segment_dir)
+    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, train_image_dir, graph_save_dir, model_save_dir, segment_dir)
 
     return
 
-def save_epoch_info(model_dir: str, metric_name: str, epoch: int):
+def save_epoch_info(
+    model_dir: str, 
+    metric_name: str, 
+    epoch: int
+) -> None:
     """エポック情報をテキストファイルに保存する"""
     file_path = os.path.join(model_dir, f'best_{metric_name}_epoch.txt')
     with open(file_path, 'w') as f:
@@ -143,7 +134,7 @@ def save_best_model(
     model_dir: Path, 
     file_name: Path, 
     is_higher_better: bool,
-    metric_name
+    metric_name: str
 ) -> float:
     """
     最良のモデルを保存する
@@ -199,7 +190,6 @@ def train_model(
     epochs: int,
     early_stopping: EarlyStopping,
     class_num: int,
-    class_names: List[str],
     data_dir: Path,
     graph_save_dir: Path,
     model_save_dir: Path,
@@ -257,7 +247,6 @@ def train_model(
         epoch_val_ious_from_confusion_matrix.append(val_iou_from_matrix)
         epoch_train_miou_from_confusion_matrix.append(train_miou_from_matrix)
         epoch_val_miou_from_confusion_matrix.append(val_miou_from_matrix)
-        # logger.info(f'Epoch [{epoch+1}/{epochs}] | Loss: Train {epoch_loss}, Validation {val_loss}\n')
 
         # 学習曲線をプロット
         plot_and_save_metrics_curve(epoch+1, train_losses, valid_losses, "Loss", graph_save_dir / Path("training_loss_curve.png"))
@@ -279,7 +268,7 @@ def one_epoch_train(
     criterion: nn.Module,       
     epoch: int,                 
     epochs: int,
-    class_num                 
+    class_num: int                 
 ) -> float:           
     """
     1エポックごとのモデルの学習を行う関数
@@ -337,7 +326,7 @@ def eval_dataset_and_save_images(
     class_num: int, 
     seg_img_dir: Path = None,
     org_img_dir: Path = None
-) -> Tuple[float, List[float]] :
+) -> Tuple[float, List[float], np.ndarray] :
     if seg_img_dir is not None:
         seg_img_dir.mkdir(parents=True, exist_ok=True)
 
@@ -429,12 +418,6 @@ def parse_args():
                         default=(224, 224),
                         help='画像サイズ (height, width)'
                         )
-    parser.add_argument('--attention_mode', 
-                        type=str,
-                        default="none",
-                        choices=["none", "self_attention", "channel_attention", "both"],
-                        help='attention_layerの使用するかを指定する変数'
-                        )
     parser.add_argument("--seed",
                         type=float,
                         default=42
@@ -455,8 +438,6 @@ if __name__ == "__main__":
     logger.info("loglevel: %s", args.loglevel)
     lformat = "%(name)s <L%(lineno)s> [%(levelname)s] %(message)s"
     logging.basicConfig(
-        # filename='../../train_fcn.log',  # 出力先ファイルを指定
-        # stream=sys.stdout,  # 標準出力に出力
         level=logging.INFO,
         filemode='w',  # ファイルを上書きモードに設定
         format=lformat,

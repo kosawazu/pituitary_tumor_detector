@@ -133,7 +133,11 @@ def save_confusion_matrix_with_metrics(
 
     print(f"Confusion matrix with metrics saved to: {confusion_matrix_file}")
 
-def calculate_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int) -> Tuple[List[float], List[int]]:
+def calculate_iou(
+    pred: torch.Tensor, 
+    target: torch.Tensor, 
+    num_classes: int
+) -> Tuple[List[float], List[int]]:
     """
     各クラスのIoUを計算し、NaNの数も追跡します。
     """
@@ -158,7 +162,6 @@ def calculate_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int) ->
         
         intersection = (pred_inds & target_inds).sum().float().item()
         union = (pred_inds | target_inds).sum().float().item()
-        pred_sum = pred_inds.sum().float().item()
         target_sum = target_inds.sum().float().item()
         
         if union == 0:
@@ -177,17 +180,13 @@ def calculate_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int) ->
     return ious
 
 
-def update_ious_and_counts(all_ious, all_iou_counts, ious):
+def update_ious_and_counts(
+    all_ious: List[List[float]],
+    all_iou_counts: List[int],
+    ious: List[float]
+) -> Tuple[List[float], List[int]]:
     """
     IoUリストとカウントを更新する関数
-
-    Parameters:
-    all_ious (List[List[float] | None]): これまでのIoUのリスト
-    all_iou_counts (List[int]): これまでの有効なIoUのカウント
-    ious (List[float]): 新しいIoUのリスト
-
-    Returns:
-    Tuple[List[List[float] | None], List[int]]: 更新されたIoUリストとカウント
     """
     if not all_ious:
         updated_ious = [[x] if not math.isnan(x) else None for x in ious]

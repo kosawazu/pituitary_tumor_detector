@@ -6,8 +6,8 @@ from typing import List
 
 def plot_and_save_metrics_curve(
     epochs: int, 
-    train_losses: float, 
-    valid_losses: float, 
+    train_losses: List[float], 
+    valid_losses: List[float], 
     title_label: str,
     graph_path: Path
 ) -> None:
