@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix
+import re
 from typing import Tuple, List
 sys.path.append("../")
 # 自作モジュール
@@ -17,6 +18,7 @@ sys.path.append("../")
 from segment_utils.dataset_utils import(
     get_transform,
     CLASS_MAPPING,
+    TARGET_CLASS_MAPPING,
 )
 
 from segment_utils.image_processing import(
@@ -27,12 +29,8 @@ from segment_utils.image_processing import(
 )
 
 from segment_utils.metrics import(
-    save_iou_to_csv,
-    save_confusion_matrix_with_metrics,
-    calculate_iou,
-    update_ious_and_counts,
-    calculate_average_ious_and_miou,
-    calculate_iou_and_miou_from_confusion_matrix
+    plot_iou_by_image,
+    calculate_target_class_iou
 )
 
 from utils.model_utils import (
@@ -47,27 +45,24 @@ from utils.general_utils import (
 logger = logging.getLogger(__name__)
 
 def main(args):
-    data_dir = args.data_dir 
+    image_dir = args.image_dir 
     class_num = args.class_num
     model_name = args.model_name
-    model_file = args.save_model_file
-    model_data_dir = args.save_dir / Path("training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
-    test_text_file_path = model_data_dir / Path(f"others/split_dataset/test_filenames.txt")
-    test_result_dir = model_data_dir / Path("test", model_file)
-    segment_save_dir = test_result_dir / Path("segment_image")
-    blended_segment_save_dir = test_result_dir / Path("blend_image")
-    metrics_segment_save_dir = test_result_dir / Path("metrics")
-    gradation_segment_save_dir = test_result_dir / Path("blend_gradation_image")
-    model_path = model_data_dir / Path("model", f"{model_file}.pth")
-    file_names_list = get_test_image_name(test_text_file_path)
-    test_image_paths, test_true_labels = get_test_image_paths_and_labels(file_names_list, data_dir)
+    save_dir = args.save_dir
+    model_path = args.model_path
+    segment_save_dir = save_dir / Path("segment_image")
+    blended_segment_save_dir = save_dir / Path("blend_image")
+    metrics_segment_save_dir = save_dir / Path("metrics")
+    gradation_segment_save_dir = save_dir / Path("blend_gradation_image")
+    image_paths = list(image_dir.glob("*.jpg"))
+    test_image_paths, test_true_labels = get_sorted_test_labels(args.json_path, image_paths)
     transform = get_transform(args.image_size)
     os.makedirs(segment_save_dir, exist_ok=True)
     os.makedirs(blended_segment_save_dir, exist_ok=True)
     os.makedirs(metrics_segment_save_dir, exist_ok=True)
     os.makedirs(gradation_segment_save_dir, exist_ok=True)
     class_names = [CLASS_MAPPING[i] for i in sorted(CLASS_MAPPING.keys())]
-    num_classes = len(class_names)
+    target_class_names = [TARGET_CLASS_MAPPING[i] for i in sorted(TARGET_CLASS_MAPPING.keys())]
     """モデルをデバイス（GPU/CPU）に設定し、必要に応じてマルチGPUモードに切り替えます。"""
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
     logger.info(f"{model_path}を読み込みます")
@@ -78,11 +73,10 @@ def main(args):
     # モデルを推論モードに設定
     model.eval()
 
-    all_ground_truths = []
-    all_predictions = []
-    all_ious = []
-    all_iou_counts = []
+    # 画像ごとのIoUを保存するための辞書を作成
+    image_iou_dict = {}
     for test_image_path, test_image_label in zip(test_image_paths, test_true_labels):
+        image_name = test_image_path.stem
         test_image_label_tensor = torch.tensor(test_image_label, device=device)
         # 入力画像を読み込み、前処理
         img = Image.open(test_image_path).convert('RGB')
@@ -98,141 +92,151 @@ def main(args):
         # 各ピクセルに最も確率の高いクラスを割り当てる
         output_resized = resize_segmentation_tensor(output, test_image_label.shape[-2:])
         output_predictions = output_resized.argmax(1).squeeze().cpu().numpy()
-        ious = calculate_iou(output_predictions, test_image_label_tensor, num_classes)
-        all_ious, all_iou_counts = update_ious_and_counts(all_ious, all_iou_counts, ious)
+        ious = calculate_target_class_iou(output_predictions, test_image_label_tensor)
 
-        # ピクセルごとに予測ラベルと正解ラベルをフラットにする
-        all_ground_truths.append(test_image_label.flatten())
-        all_predictions.append(output_predictions.flatten())
-        #セグメントした画像を保存
+        image_iou_dict[image_name] = ious
+        # #セグメントした画像を保存
         segment_save(segment_save_dir, test_image_path, output_predictions)
         save_blended_image(blended_segment_save_dir, test_image_path, output_predictions)
         save_blended_image_with_class4_gradient(gradation_segment_save_dir, test_image_path, output)
 
+    # グラフ描画
+    plot_iou_by_image(image_iou_dict, target_class_names, save_dir)
+    
+def natural_sort_key(s):
+    """自然順ソート用のキー関数"""
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s))]
 
-    # すべての画像の正解ラベルと予測ラベルをまとめる
-    all_ground_truths = np.concatenate(all_ground_truths)
-    all_predictions = np.concatenate(all_predictions)
-    avg_ious, miou = calculate_average_ious_and_miou(all_ious)
-    # ピクセル単位の混同行列を作成
-    conf_matrix = confusion_matrix(all_ground_truths, all_predictions, labels=list(range(num_classes)))
-    # iouを混同行列から計算
-    iou_from_matrix, miou_from_matrix = calculate_iou_and_miou_from_confusion_matrix(conf_matrix, num_classes)
-    # 混同行列とメトリクスを保存
-    save_confusion_matrix_with_metrics(conf_matrix, metrics_segment_save_dir, class_names)
-    # CSVにIoU結果を保存
-    save_iou_to_csv(avg_ious, miou, class_names, metrics_segment_save_dir, Path("iou_results.csv"), num_classes)
-    # 混同行列から計算したiouを保存
-    save_iou_to_csv(iou_from_matrix, miou_from_matrix, class_names, metrics_segment_save_dir, Path("iou_results_from_conf_matrix.csv"), num_classes)
-
-def get_test_image_name(
-    txt_file_path: Path
-) -> List[str]:
-    # ファイル名を格納するリスト
-    file_names_list = []
-
-    # テキストファイルを読み込んでリストに格納
-    with open(txt_file_path, 'r') as file:
-        # 各行を読み込み、改行を削除してリストに追加
-        file_names_list = [line.strip() for line in file]
-
-    return file_names_list
-
-def get_test_image_paths_and_labels(
-    file_names_list: List[str],
-    data_dir: Path
+def get_sorted_test_labels(
+    json_path: str,
+    image_paths: List[Path]
 ) -> Tuple[List[Path], List[np.ndarray]]:
-    image_paths = []
+    """
+    VoTTラベルJSONファイルから指定された画像パスに基づいてラベルを生成し、
+    ファイル名で自然順ソートした画像パスとラベルのペアを返す関数
+    """
+    # 元の関数でラベルを取得
+    unsorted_image_paths, unsorted_labels = get_test_labels(json_path, image_paths)
+    
+    # パスとラベルをペアにする
+    path_label_pairs = list(zip(unsorted_image_paths, unsorted_labels))
+    
+    # 自然順でソート
+    sorted_pairs = sorted(path_label_pairs, key=lambda x: natural_sort_key(x[0].name))
+    
+    # ソートされたパスとラベルを別々のリストに戻す
+    sorted_image_paths = [pair[0] for pair in sorted_pairs]
+    sorted_labels = [pair[1] for pair in sorted_pairs]
+    
+    return sorted_image_paths, sorted_labels
+
+def get_test_labels(
+    json_path: str,
+    image_paths: List[Path]
+) -> Tuple[List[Path], List[np.ndarray]]:
+    """
+    単一のVoTTラベルJSONファイルから、指定された画像パスリストに基づいてラベルを生成する関数
+    """
+    result_image_paths = []
     labels = []
-    image_dir = data_dir / Path("img")
-    json_dir = data_dir / Path("mask_json")
-
-    for json_file_name in file_names_list:
-        # JSONファイルのフルパスを作成
-        json_file_path = json_dir / Path(json_file_name)
-
-        # JSONファイルが存在するか確認
-        if not json_file_path.exists():
-            print(f"Warning: JSON file {json_file_name} not found in {json_dir}")
-            continue  # 次のファイルに進む
-
-        # JSONファイルを読み込む
-        with open(json_file_path, 'r') as f:
-            data = json.load(f)
-
-        # 画像ファイル名を取得
-        img_metadata = data['asset']
-        img_filename = img_metadata['name']  # ファイル名のみ取得
-
-        # 画像ファイルのフルパスを作成 (image_dir からファイル名を探す)
-        img_path = image_dir / img_filename
-
-        # 画像ファイルが存在するか確認
-        if not img_path.exists():
-            print(f"Image not found: {img_path}, skipping.")
+    
+    # 画像名のリストを準備
+    image_names = [p.name for p in image_paths]
+    
+    # 画像パスを名前で検索するための辞書を作成
+    image_path_by_name = {p.name: p for p in image_paths}
+    
+    # JSONファイルが存在するか確認
+    if not Path(json_path).exists():
+        print(f"Warning: JSON file {json_path} not found")
+        return result_image_paths, labels
+    
+    # JSONファイルを読み込む
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    
+    # 画像名をキーとしてassetsを検索しやすくする辞書を作成
+    assets_by_name = {}
+    for asset_id, asset_data in data.get('assets', {}).items():
+        if 'asset' in asset_data and 'name' in asset_data['asset']:
+            assets_by_name[asset_data['asset']['name']] = asset_data
+    
+    # 各画像名に対して処理
+    for img_filename in image_names:
+        # この画像名に該当するアセットを取得
+        if img_filename not in assets_by_name:
+            print(f"Image {img_filename} not found in JSON data, skipping.")
             continue
-
+        
+        # 対応する画像パスを取得
+        img_path = image_path_by_name[img_filename]
+        
+        # アセットデータを取得
+        asset_data = assets_by_name[img_filename]
+        img_metadata = asset_data['asset']
+        
         # アノテーション領域を読み込む
-        mask = np.zeros((img_metadata['size']['height'], img_metadata['size']['width']), dtype=np.uint8)
-
+        width = img_metadata['size']['width']
+        height = img_metadata['size']['height']
+        mask = np.zeros((height, width), dtype=np.uint8)
+        
         # アノテーション情報からマスクを作成
-        regions = data.get('regions', [])
+        regions = asset_data.get('regions', [])
         for region in regions:
-            points = region['points']
+            points = region.get('points', [])
+            if not points:
+                continue
+                
             polygon = [(point['x'], point['y']) for point in points]
-
+            
             # ポリゴンをバイナリマスクに変換
-            img_mask = Image.new('L', (img_metadata['size']['width'], img_metadata['size']['height']), 0)
+            img_mask = Image.new('L', (width, height), 0)
             ImageDraw.Draw(img_mask).polygon(polygon, outline=1, fill=1)
             region_mask = np.array(img_mask)
-
+            
             # カテゴリごとにマスクを作成（カテゴリ名で対応付け）
-            if "sellar" in region['tags']:
+            tags = region.get('tags', [])
+            if "sellar" in tags:
                 mask = np.maximum(mask, region_mask * 1)  # クラスID 1を使用
-            elif "sella" in region['tags']:
+            elif "sella" in tags:
                 mask = np.maximum(mask, region_mask * 2)  # クラスID 2を使用
-            elif "pituitary" in region['tags']:
+            elif "pituitary" in tags:
                 mask = np.maximum(mask, region_mask * 3)  # クラスID 3を使用
-            elif "tumor" in region['tags']:
+            elif "tumor" in tags:
                 mask = np.maximum(mask, region_mask * 4)  # クラスID 4を使用
-
+        
         # 画像パスとラベルをそれぞれのリストに追加
-        image_paths.append(img_path)
+        result_image_paths.append(img_path)
         labels.append(mask)
-
-    return image_paths, labels
+    
+    return result_image_paths, labels
 
 def parse_args():
     # オプションの解析
     parser = argparse.ArgumentParser(description="セグメンテーションモデルの推論")
 
-    parser.add_argument("--data_dir",
+    parser.add_argument("--image_dir",
                         type=Path,
-                        default="../../data/",
+                        help='入力データのディレクトリパス'
+                        )
+    parser.add_argument("--json_path",
+                        type=Path,
                         help='入力データのディレクトリパス'
                         )
     parser.add_argument("--save_dir",
                         type=Path,
-                        default="../../result/",
+                        default="../../result/ext_val",
                         help='結果を保存するディレクトリパス'
                         )  
+    parser.add_argument("--model_path",
+                        type=Path,
+                        help='結果を保存するディレクトリパス'
+                        ) 
     parser.add_argument("--model_name",
                         type=str,
-                        default="fcn_resnet50",
+                        default="deeplabv3_resnet101",
                         choices=["fcn_resnet50", "fcn_resnet101", "deeplabv3_resnet101", "vit_b_16_segmentation", "fcn_bot_resnet101"],
                         help="Choose the model architecture. Available options are: fcn_resnet50, fcn_resnet101, fcn_bot_resnet101, deeplabv3_resnet101, vit_b_16_segmentation."
-                        )
-    parser.add_argument("--save_model_file",
-                        type=str,
-                        help='保存したモデルのファイル名'
-                        ) 
-    parser.add_argument("--batch_size",
-                        type=int,
-                        default=20
-                        )
-    parser.add_argument("--learning_rate",
-                        type=float,
-                        default=1e-4
                         )
     parser.add_argument("--class_num",
                         type=int,

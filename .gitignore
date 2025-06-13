@@ -9,3 +9,5 @@ build/
 dist/
 *.log
 *.spec
+best_model/
+generate_conf_image.py

@@ -17,6 +17,12 @@ CLASS_MAPPING = {
     4: "tumor",
 }
 
+TARGET_CLASS_MAPPING = {
+    0: "sella",
+    1: "pituitary",
+    2: "tumor",
+}
+
 class SegmentationDataset(Dataset):
     def __init__(
         self, 
