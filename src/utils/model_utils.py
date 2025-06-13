@@ -43,8 +43,14 @@ def setup_device(
     model.to(device)
     
     try:
-        if model_path is not None:
-            logger.info(f"Loading model from {model_path}...")
+        logger.info(f"Loading model from {model_path}...")
+        if device_count > 1:
+            # マルチGPUの場合はmap_locationを指定しない
+            logger.info(f"GPUの数が{device_count}のためそのまま読み込みます。")
+            loaded_state_dict = torch.load(model_path)
+            model.load_state_dict(loaded_state_dict)
+        else:
+            # シングルGPUまたはCPUの場合は明示的にデバイスを指定
             loaded_state_dict = torch.load(model_path, map_location=device)
             model.load_state_dict(loaded_state_dict, strict=False)
             logger.info("Model loaded successfully.")
@@ -61,7 +67,7 @@ def setup_model(model_name: str, num_classes: int = 3) -> nn.Module:
     model_dict = {
         "fcn_resnet50": models.segmentation.fcn_resnet50(weights=None),
         "fcn_resnet101": models.segmentation.fcn_resnet101(weights=None),
-        "deeplabv3_resnet101": models.segmentation.deeplabv3_resnet101(weights=None),
+        "deeplabv3_resnet101": models.segmentation.deeplabv3_resnet101(weights=None, aux_loss=True),
         "fcn_bot_resnet101": fcn_bot_resnet101(num_classes),
         "vit_b_16_segmentation": vit_segmentation(num_classes)
     }
@@ -92,9 +98,7 @@ def tune_model(model: nn.Module, model_name: str, num_classes: int = 3) -> nn.Mo
     else:
         if model_name == "deeplabv3_resnet101":
             model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
-            # aux_classifier の処理
-            if model.aux_classifier is not None:
-                model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
+            model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=(1, 1), stride=(1, 1))
         elif "resnet" in model_name:
             model.classifier[-1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
         else:
