@@ -52,7 +52,7 @@ def main(args):
     model_name = args.model_name
     model_file = args.save_model_file
     model_data_dir = args.save_dir / Path("training_results", model_name, str(args.batch_size), "{:.1e}".format(args.learning_rate))
-    test_text_file_path = model_data_dir / Path(f"others/split_dataset/val_filenames.txt")
+    test_text_file_path = model_data_dir / Path(f"others/split_dataset/test_filenames.txt")
     test_result_dir = model_data_dir / Path("test", model_file)
     segment_save_dir = test_result_dir / Path("segment_image")
     blended_segment_save_dir = test_result_dir / Path("blend_image")
@@ -124,8 +124,6 @@ def main(args):
     save_iou_to_csv(avg_ious, miou, class_names, metrics_segment_save_dir, Path("iou_results.csv"), num_classes)
     # 混同行列から計算したiouを保存
     save_iou_to_csv(iou_from_matrix, miou_from_matrix, class_names, metrics_segment_save_dir, Path("iou_results_from_conf_matrix.csv"), num_classes)
-    
-
 
 def get_test_image_name(
     txt_file_path: Path
