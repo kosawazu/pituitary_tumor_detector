@@ -28,8 +28,11 @@ from segment_utils.image_processing import(
     resize_segmentation_tensor
 )
 
+from segment_utils.graph import(
+    plot_iou_by_image
+)
+
 from segment_utils.metrics import(
-    plot_iou_by_image,
     calculate_target_class_iou
 )
 
