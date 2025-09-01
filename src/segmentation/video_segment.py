@@ -33,7 +33,7 @@ from segment_utils.dataset_utils import (
     CLASS_MAPPING
 )
 from segment_utils.image_processing import (
-    COLORS,
+    COMBINE_COLORS,
     GRADIENT_COLORS
     
 )
@@ -45,7 +45,11 @@ def main(args):
     model_name = args.model_name
     video_path = args.video_path
     model_path = args.model_dir / Path(model_name, "best_tumor_iou_model.pth")
-    output_video_path = save_dir / Path("segment_video", model_name)
+    video_name = video_path.name
+    output_video_path = save_dir / Path(model_name, video_name)
+    logger.info(f"{output_video_path=}")
+    output_video_path.parent.mkdir(parents=True, exist_ok=True)
+
     class_num = len(CLASS_MAPPING)
     # COCOデータセットで事前学習されたFCN-ResNet50モデルをロード
     model = setup_model(model_name, num_classes=class_num)
@@ -55,6 +59,9 @@ def main(args):
     # モデルを推論モードに設定
     model.eval()
     # 動画のセグメンテーションを実行
+    # 動画を表示する場合
+    # process_video_display(video_path, output_video_path, model, device, transform)
+    # 動画を保存する場合
     process_video(video_path, output_video_path, model, device, transform)
 
 # RGB から BGR への変換関数
@@ -87,7 +94,8 @@ def create_video_writer(
     fps: int
 ) -> cv2.VideoWriter:
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    return cv2.VideoWriter(str(output_path), fourcc, fps, (width*2, height))
+    # return cv2.VideoWriter(str(output_path), fourcc, fps, (width*2, height))
+    return cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
 
 def process_frame(
     frame: np.ndarray, 
@@ -129,6 +137,7 @@ def create_segmentation_mask(
     for class_id, color in colors_bgr.items():
         if class_id == 0:
             continue
+        # tumorのカラーをグラデーションにする場合
         elif class_id == 4:
             mask = output_predictions == class_id
             segmentation_mask[mask & (max_prob < thresholds[0])] = gradient_colors_bgr[0]
@@ -169,7 +178,7 @@ def resize_frame(frame: np.ndarray, window_name: str) -> np.ndarray:
 
     return background
 
-def process_video(
+def process_video_display(
     video_path: Path, 
     output_video_path: Path, 
     model: nn.Module, 
@@ -177,7 +186,7 @@ def process_video(
     transform: Callable[[Image.Image], Tensor]
 ) -> None:
     thresholds = [0.85, 0.90, 0.95]
-    colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COLORS.items()}
+    colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COMBINE_COLORS.items()}
     gradient_colors_bgr = [rgb_to_bgr(color) for color in GRADIENT_COLORS]
 
     cap, width, height, fps, total_frames = initialize_video(video_path)
@@ -235,6 +244,57 @@ def process_video(
     out.release()
     cv2.destroyAllWindows()
 
+def process_video(
+    video_path: Path, 
+    output_video_path: Path, 
+    model: nn.Module, 
+    device: torch.device, 
+    transform: Callable[[Image.Image], Tensor]
+) -> None:
+    thresholds = [0.85, 0.90, 0.95]
+    colors_bgr = {class_id: rgb_to_bgr(color) for class_id, color in COMBINE_COLORS.items()}
+    gradient_colors_bgr = [rgb_to_bgr(color) for color in GRADIENT_COLORS]
+
+    # 入力動画の初期化
+    cap, width, height, fps, total_frames = initialize_video(video_path)
+    # 出力動画ライターの作成（幅を2倍にして並べて表示）
+    out = create_video_writer(output_video_path, width, height, fps)
+
+    frame_idx = 0
+    last_process_time = time.time()
+    last_segmentation_frame = None
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frame_idx += 1
+        current_time = time.time()
+        elapsed_time = current_time - last_process_time
+
+        # 1秒経過したか、最初のフレームの場合に推論を実行
+        if elapsed_time >= 1.0 or last_segmentation_frame is None:
+            print(f"Processing frame {frame_idx}/{total_frames}")
+            last_segmentation_frame = process_frame(frame, model, device, transform, thresholds, colors_bgr, gradient_colors_bgr)
+            last_process_time = current_time
+
+        # 最新の推論結果を使用
+        segmentation_frame = last_segmentation_frame if last_segmentation_frame is not None else frame
+        
+        # BGRAからBGRに変換
+        segmentation_frame_bgr = cv2.cvtColor(segmentation_frame, cv2.COLOR_BGRA2BGR)
+        
+        # 元動画と推論結果を横に並べる
+        # combined_frame = np.hstack((frame, segmentation_frame_bgr))
+        
+        # 保存
+        out.write(segmentation_frame_bgr)
+
+    # リソースの解放
+    cap.release()
+    out.release()
+
 def get_screen_resolution():
     """画面の解像度を取得する関数"""
     try:
@@ -266,7 +326,7 @@ def parse_args():
                         )
     parser.add_argument("--model_dir",
                         type=Path,
-                        default="../../result/demo_model",
+                        default="../../best_model",
                         help='転移学習モデルパラメータのパス'
                         )    
     parser.add_argument(
