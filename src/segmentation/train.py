@@ -110,7 +110,21 @@ def main(args):
     early_stopping = EarlyStopping(patience=args.patience, verbose=True) 
 
     #モデルの学習と学習曲線の出力
-    train_model(train_loader, valid_loader, device, optimizer, model, criterion, epochs, early_stopping, class_num, train_image_dir, graph_save_dir, model_save_dir, segment_dir)
+    train_model(
+        train_loader, 
+        valid_loader, 
+        device, 
+        optimizer, 
+        model, 
+        criterion, 
+        epochs, 
+        early_stopping, 
+        class_num, 
+        train_image_dir, 
+        graph_save_dir, 
+        model_save_dir, 
+        segment_dir
+    )
 
     return
 
@@ -211,7 +225,16 @@ def train_model(
     best_metrics = {"loss": float('inf'), "tumor_iou": 0.0, "mean_iou": 0.0}
     for epoch in range(epochs):
         # 各エポックの損失をリストに追加
-        epoch_loss, train_ious, train_confusion_matrix = one_epoch_train(train_loader, device, optimizer, model, criterion, epoch, epochs, class_num)
+        epoch_loss, train_ious, train_confusion_matrix = one_epoch_train(
+            train_loader, 
+            device, 
+            optimizer, 
+            model, 
+            criterion, 
+            epoch, 
+            epochs, 
+            class_num
+        )
 
         # 検証用データ
         val_loss, val_ious, val_confusion_matrix = eval_dataset_and_save_images(

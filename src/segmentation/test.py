@@ -119,11 +119,29 @@ def main(args):
     # iouを混同行列から計算
     iou_from_matrix, miou_from_matrix = calculate_iou_and_miou_from_confusion_matrix(conf_matrix, num_classes)
     # 混同行列とメトリクスを保存
-    save_confusion_matrix_with_metrics(conf_matrix, metrics_segment_save_dir, class_names)
+    save_confusion_matrix_with_metrics(
+        conf_matrix, 
+        metrics_segment_save_dir, 
+        class_names
+    )
     # CSVにIoU結果を保存
-    save_iou_to_csv(avg_ious, miou, class_names, metrics_segment_save_dir, Path("iou_results.csv"), num_classes)
+    save_iou_to_csv(
+        avg_ious, 
+        miou, 
+        class_names, 
+        metrics_segment_save_dir, 
+        Path("iou_results.csv"), 
+        num_classes
+    )
     # 混同行列から計算したiouを保存
-    save_iou_to_csv(iou_from_matrix, miou_from_matrix, class_names, metrics_segment_save_dir, Path("iou_results_from_conf_matrix.csv"), num_classes)
+    save_iou_to_csv(
+        iou_from_matrix, 
+        miou_from_matrix, 
+        class_names, 
+        metrics_segment_save_dir, 
+        Path("iou_results_from_conf_matrix.csv"), 
+        num_classes
+    )
 
 def get_test_image_name(
     txt_file_path: Path
